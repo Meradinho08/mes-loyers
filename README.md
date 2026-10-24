@@ -19,13 +19,20 @@ en quelques secondes et **envoyez-les directement sur WhatsApp** (PDF + message 
   - Montant écrit en toutes lettres (« soixante-quinze mille francs CFA »), mention « Dont quittance » sur les reçus.
   - Modes de paiement : espèces, T-Money, Flooz, virement, chèque.
   - Une facture payée se transforme en reçu en un clic.
-- **Envoi WhatsApp**
-  - Sur téléphone : le PDF est partagé directement via le menu de partage (choisissez WhatsApp, puis le locataire).
-  - Sur ordinateur : le PDF est téléchargé et WhatsApp s'ouvre sur la discussion du locataire avec le message rédigé ; il suffit de joindre le PDF.
+- **Envoi au choix : WhatsApp, SMS ou e-mail**, en un clic, depuis le document, l'éditeur (enregistre puis envoie),
+  la liste des documents ou le récapitulatif d'un locataire.
+  - WhatsApp s'ouvre directement sur la discussion du locataire avec le message prêt (application sur téléphone,
+    WhatsApp Web sur ordinateur).
+  - SMS : l'application Messages s'ouvre avec le texte. E-mail : la messagerie s'ouvre avec l'objet et le texte.
+  - Le PDF est téléchargé en même temps pour le joindre (désactivable dans les paramètres). Sur téléphone, le bouton
+    « Partager le fichier PDF » envoie aussi le fichier lui-même.
 - **Tableau de bord** : encaissé du mois, factures impayées, qui a payé ce mois-ci.
 - **Sauvegarde / restauration** des données en fichier JSON (Paramètres).
 
 Les numéros sans indicatif sont considérés comme togolais (+228) ; l'indicatif par défaut se change dans les paramètres.
+
+- **Application installable** : sur téléphone, « Ajouter à l'écran d'accueil » l'installe comme une application.
+  Les pages sont mises en cache pour s'ouvrir instantanément, même avec une connexion faible ou coupée.
 
 ## Données
 

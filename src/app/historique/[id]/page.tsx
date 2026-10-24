@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useSyncExternalStore } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, ChevronRight, Download, FileText, Loader2, Phone, Receipt, UserX, Zap } from "lucide-react";
@@ -10,15 +10,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DocStatusBadge, EmptyState, PageLoading } from "@/components/common";
 import { MonthGrid, MonthLegend } from "@/components/month-grid";
-import { WhatsAppIcon } from "@/components/whatsapp-dialog";
+import { SendButtons } from "@/components/send-buttons";
 import { useAppData } from "@/lib/store";
 import { availableYears, tenantRecap } from "@/lib/recap";
 import { formatAmount, formatDate, formatPeriod, total } from "@/lib/format";
-import { canSharePdf, downloadFile, recapFile, recapMessage, recapWhatsappUrl, shareFile } from "@/lib/whatsapp";
+import { downloadFile, recapFile, recapPayload } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
 import type { AppData, Tenant } from "@/lib/types";
-
-const noop = () => () => {};
 
 export default function TenantHistoryPage() {
   return (
@@ -54,8 +52,7 @@ function TenantHistoryView() {
 
 function TenantHistory({ data, tenant, year }: { data: AppData; tenant: Tenant; year: number }) {
   const router = useRouter();
-  const [busy, setBusy] = useState<"share" | "download" | null>(null);
-  const shareSupported = useSyncExternalStore(noop, canSharePdf, () => false);
+  const [busy, setBusy] = useState(false);
   const { settings } = data;
   const cur = settings.currency;
   const recap = tenantRecap(data, tenant.id, year);
@@ -65,32 +62,14 @@ function TenantHistory({ data, tenant, year }: { data: AppData; tenant: Tenant; 
     .flatMap((d) => d.items.filter((i) => i.kind === "electricite").map((i) => ({ doc: d, item: i })))
     .sort((a, b) => a.doc.period.localeCompare(b.doc.period));
 
-  async function send() {
-    setBusy("share");
-    try {
-      if (shareSupported) {
-        const file = await recapFile(tenant, recap, settings);
-        await shareFile(file, `Récapitulatif ${year}`, recapMessage(tenant, recap, settings));
-      } else {
-        window.open(recapWhatsappUrl(tenant, recap, settings), "_blank", "noopener");
-        downloadFile(await recapFile(tenant, recap, settings));
-        toast.success("PDF téléchargé — joignez-le dans la discussion WhatsApp");
-      }
-    } catch {
-      toast.error("L'envoi a échoué");
-    } finally {
-      setBusy(null);
-    }
-  }
-
   async function download() {
-    setBusy("download");
+    setBusy(true);
     try {
       downloadFile(await recapFile(tenant, recap, settings));
     } catch {
       toast.error("Impossible de générer le PDF");
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   }
 
@@ -128,19 +107,25 @@ function TenantHistory({ data, tenant, year }: { data: AppData; tenant: Tenant; 
               ))}
             </SelectContent>
           </Select>
-          <Button size="lg" variant="outline" className="h-10" onClick={download} disabled={busy !== null}>
-            {busy === "download" ? <Loader2 className="animate-spin" /> : <Download />} Récap PDF
-          </Button>
-          <Button
-            size="lg"
-            className="h-10 bg-[#25D366] text-white hover:bg-[#1ebe5b]"
-            onClick={send}
-            disabled={busy !== null}
-          >
-            {busy === "share" ? <Loader2 className="animate-spin" /> : <WhatsAppIcon className="size-4" />} Envoyer le récap
+          <Button size="lg" variant="outline" className="h-10" onClick={download} disabled={busy}>
+            {busy ? <Loader2 className="animate-spin" /> : <Download />} Récap PDF
           </Button>
         </div>
       </div>
+
+      <Card className="mb-6 gap-2 py-3">
+        <CardContent className="flex flex-col gap-2 px-3 sm:flex-row sm:items-center">
+          <p className="shrink-0 text-sm font-medium sm:w-44">Envoyer le récapitulatif</p>
+          <SendButtons
+            variant="bar"
+            autoDownload={settings.autoDownloadPdf}
+            prepare={() => ({
+              payload: recapPayload(tenant, recap, settings),
+              file: () => recapFile(tenant, recap, settings),
+            })}
+          />
+        </CardContent>
+      </Card>
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Total facturé" value={formatAmount(recap.invoiced, cur)} />

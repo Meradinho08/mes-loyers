@@ -126,5 +126,7 @@
   }
   html {
     @apply font-sans;
+    /* Keeps focused fields clear of the sticky action bars and the mobile bottom nav. */
+    scroll-padding-bottom: 10rem;
   }
 }

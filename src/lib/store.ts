@@ -15,6 +15,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultCountryCode: "228",
   footerNote: "Merci pour votre confiance.",
   signature: "",
+  autoDownloadPdf: true,
   electricityPrice: 0,
   chargeCatalog: [
     { id: "eau", label: "Eau", amount: 3000 },
@@ -33,6 +34,7 @@ function migrateTenant(t: LegacyTenant): Tenant {
     id: t.id ?? uid(),
     name: t.name ?? "",
     phone: t.phone ?? "",
+    email: t.email ?? "",
     property: t.property ?? "",
     rent: t.rent ?? 0,
     chargeItems,
@@ -53,6 +55,7 @@ function migrate(parsed: Partial<AppData>): AppData {
     tenants: (parsed.tenants ?? []).map((t) => migrateTenant(t as LegacyTenant)),
     documents: (parsed.documents ?? []).map((d) => ({
       ...d,
+      tenantEmail: d.tenantEmail ?? "",
       items: (d.items ?? []).map((i, idx) => migrateItem(i as LegacyItem, idx)),
     })),
   };

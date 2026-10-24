@@ -24,6 +24,7 @@ import type { ChargePreset, Tenant } from "@/lib/types";
 type FormState = {
   name: string;
   phone: string;
+  email: string;
   property: string;
   rent: string;
   chargeItems: ChargePreset[];
@@ -35,6 +36,7 @@ function toForm(t?: Tenant | null): FormState {
   return {
     name: t?.name ?? "",
     phone: t?.phone ?? "",
+    email: t?.email ?? "",
     property: t?.property ?? "",
     rent: t?.rent ? String(t.rent) : "",
     chargeItems: t?.chargeItems ?? [],
@@ -85,7 +87,7 @@ function TenantForm({
   const data = useAppData();
   const [form, setForm] = useState<FormState>(() => toForm(tenant));
   const [error, setError] = useState<string | null>(null);
-  const set = (k: "name" | "phone" | "property" | "rent" | "notes") =>
+  const set = (k: "name" | "phone" | "email" | "property" | "rent" | "notes") =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const kwhPrice = data?.settings.electricityPrice ?? 0;
 
@@ -99,6 +101,7 @@ function TenantForm({
       id: tenant?.id,
       name: form.name.trim(),
       phone: form.phone.trim(),
+      email: form.email.trim(),
       property: form.property.trim(),
       rent: Number(form.rent) || 0,
       chargeItems: form.chargeItems.filter((c) => c.label.trim() || c.amount),
@@ -134,6 +137,17 @@ function TenantForm({
           />
         </div>
         <div className="space-y-1.5">
+          <Label htmlFor="t-email">E-mail</Label>
+          <Input
+            id="t-email"
+            type="email"
+            inputMode="email"
+            value={form.email}
+            onChange={set("email")}
+            placeholder="kossi@exemple.com"
+          />
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="t-property">Logement</Label>
           <Input id="t-property" value={form.property} onChange={set("property")} placeholder="Appartement A2, Bè" />
         </div>

@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DocStatusBadge, EmptyState, PageHeader, PageLoading } from "@/components/common";
 import { useAppData } from "@/lib/store";
+import { SendButtons } from "@/components/send-buttons";
+import { docPayload, pdfFile } from "@/lib/whatsapp";
 import { formatAmount, formatDate, formatPeriod, total } from "@/lib/format";
 
 type Filter = "tous" | "factures" | "recus" | "impayees";
@@ -66,9 +68,7 @@ export default function DocumentsPage() {
                 <TabsTrigger value="tous">Tous</TabsTrigger>
                 <TabsTrigger value="factures">Factures</TabsTrigger>
                 <TabsTrigger value="recus">Reçus</TabsTrigger>
-                <TabsTrigger value="impayees">
-                  Impayées{unpaidCount ? ` (${unpaidCount})` : ""}
-                </TabsTrigger>
+                <TabsTrigger value="impayees">Impayées{unpaidCount ? ` (${unpaidCount})` : ""}</TabsTrigger>
               </TabsList>
             </Tabs>
             <div className="relative w-full sm:max-w-xs">
@@ -87,24 +87,27 @@ export default function DocumentsPage() {
           ) : (
             <Card className="gap-0 divide-y py-0">
               {docs.map((d) => (
-                <Link
-                  key={d.id}
-                  href={`/documents/${d.id}`}
-                  className="flex items-center gap-3 px-4 py-3 transition hover:bg-muted/50"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium">{d.tenantName}</span>
-                      <DocStatusBadge doc={d} />
+                <div key={d.id} className="flex items-center gap-2 pr-3 transition hover:bg-muted/50">
+                  <Link href={`/documents/${d.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">{d.tenantName}</span>
+                        <DocStatusBadge doc={d} />
+                      </div>
+                      <p className="truncate text-sm text-muted-foreground">
+                        {d.number} · {formatDate(d.issueDate)}
+                        {d.period ? ` · ${formatPeriod(d.period)}` : ""}
+                      </p>
                     </div>
-                    <p className="truncate text-sm text-muted-foreground">
-                      {d.number} · {formatDate(d.issueDate)}
-                      {d.period ? ` · ${formatPeriod(d.period)}` : ""}
-                    </p>
-                  </div>
-                  <span className="shrink-0 font-medium tabular-nums">{formatAmount(total(d.items), cur)}</span>
-                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-                </Link>
+                    <span className="shrink-0 font-medium tabular-nums">{formatAmount(total(d.items), cur)}</span>
+                    <ChevronRight className="hidden size-4 shrink-0 text-muted-foreground sm:block" />
+                  </Link>
+                  <SendButtons
+                    variant="icon"
+                    autoDownload={data.settings.autoDownloadPdf}
+                    prepare={() => ({ payload: docPayload(d, data.settings), file: () => pdfFile(d, data.settings) })}
+                  />
+                </div>
               ))}
             </Card>
           )}

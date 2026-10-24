@@ -41,7 +41,7 @@ function SideNav({ pathname }: { pathname: string }) {
 
 function BottomNav({ pathname }: { pathname: string }) {
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t bg-background pb-[env(safe-area-inset-bottom)] md:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t bg-background pb-[env(safe-area-inset-bottom)] lg:hidden">
       {NAV.slice(0, 2).map((item) => (
         <MobileNavItem key={item.href} {...item} active={isActive(pathname, item.href)} />
       ))}
@@ -68,7 +68,7 @@ function ActiveBottomNav() {
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen">
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r bg-background p-4 md:flex">
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r bg-background p-4 lg:flex">
         <Link href="/" className="mb-8 flex items-center gap-2 px-2">
           <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Home className="size-5" />
@@ -93,7 +93,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-background/95 px-4 backdrop-blur md:hidden">
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-background/95 px-4 backdrop-blur lg:hidden">
           <Link href="/" className="flex items-center gap-2 font-semibold">
             <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <Home className="size-4" />
@@ -108,7 +108,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Settings className="size-5" />
           </Link>
         </header>
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 pt-6 pb-28 md:px-8 md:py-8">{children}</main>
+        <main className="mx-auto w-full max-w-6xl flex-1 px-4 pt-6 pb-28 md:px-8 lg:py-8">{children}</main>
       </div>
 
       <Suspense fallback={<BottomNav pathname="" />}>

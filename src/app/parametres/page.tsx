@@ -1,12 +1,13 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Download, PenLine, Receipt, Upload, Zap } from "lucide-react";
+import { Download, PenLine, Receipt, Send, Upload, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { PageHeader, PageLoading } from "@/components/common";
 import { ChargeList } from "@/components/charge-list";
@@ -113,6 +114,32 @@ function SettingsForm({ initial }: { initial: Settings }) {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
+                <Send className="size-4 text-primary" /> Envoi
+              </CardTitle>
+              <CardDescription>
+                Un clic sur WhatsApp, SMS ou E-mail ouvre directement l&apos;application avec le message prêt.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <label className="flex items-start gap-3">
+                <Switch
+                  checked={form.autoDownloadPdf}
+                  onCheckedChange={(v) => setForm((f) => ({ ...f, autoDownloadPdf: v }))}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="block text-sm font-medium">Télécharger le PDF à chaque envoi</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Pour le joindre dans WhatsApp (trombone) ou dans l&apos;e-mail. Les SMS contiennent seulement le message.
+                  </span>
+                </span>
+              </label>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
                 <Zap className="size-4 text-amber-500" /> Électricité
               </CardTitle>
               <CardDescription>
@@ -160,7 +187,7 @@ function SettingsForm({ initial }: { initial: Settings }) {
             </CardContent>
           </Card>
 
-          <div className="sticky bottom-20 z-20 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur md:bottom-4">
+          <div className="sticky bottom-20 z-20 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur lg:bottom-4">
             <Button type="submit" size="lg" className="h-11 w-full">
               Enregistrer les paramètres
             </Button>

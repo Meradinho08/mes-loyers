@@ -30,6 +30,8 @@ export interface Settings {
   /** Price of one kWh, in the settings currency. */
   electricityPrice: number;
   chargeCatalog: ChargePreset[];
+  /** Download the PDF when sending, so it can be attached in WhatsApp or the e-mail. */
+  autoDownloadPdf: boolean;
 }
 
 export interface ChargePreset {
@@ -42,6 +44,7 @@ export interface Tenant {
   id: string;
   name: string;
   phone: string;
+  email: string;
   property: string;
   rent: number;
   chargeItems: ChargePreset[];
@@ -71,6 +74,7 @@ export interface RentDocument {
   tenantId: string;
   tenantName: string;
   tenantPhone: string;
+  tenantEmail: string;
   property: string;
   issueDate: string;
   period: string;

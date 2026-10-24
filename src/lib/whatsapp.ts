@@ -1,6 +1,7 @@
 import type { RentDocument, Settings } from "./types";
 import { PAYMENT_METHODS } from "./types";
-import { formatAmount, formatDate, formatPeriod, normalizePhone, total } from "./format";
+import { formatAmount, formatDate, formatPeriod, total } from "./format";
+import type { SendPayload } from "./send";
 import type { LineItem, Tenant } from "./types";
 import type { TenantRecap } from "./recap";
 import { buildPdf, buildRecapPdf, docTitle, pdfFileName, recapFileName } from "./pdf";
@@ -40,10 +41,14 @@ function itemSummary(item: LineItem): string {
   return item.label;
 }
 
-export function whatsappUrl(doc: RentDocument, settings: Settings): string {
-  const phone = normalizePhone(doc.tenantPhone, settings.defaultCountryCode);
-  const text = encodeURIComponent(whatsappMessage(doc, settings));
-  return phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
+export function docPayload(doc: RentDocument, settings: Settings): SendPayload {
+  return {
+    message: whatsappMessage(doc, settings),
+    subject: `${docTitle(doc)} ${doc.number}${doc.period ? ` - ${formatPeriod(doc.period)}` : ""}`,
+    phone: doc.tenantPhone,
+    email: doc.tenantEmail,
+    countryCode: settings.defaultCountryCode,
+  };
 }
 
 export async function pdfFile(doc: RentDocument, settings: Settings): Promise<File> {
@@ -110,10 +115,14 @@ export function recapMessage(tenant: Tenant, recap: TenantRecap, settings: Setti
   return lines.join("\n");
 }
 
-export function recapWhatsappUrl(tenant: Tenant, recap: TenantRecap, settings: Settings): string {
-  const phone = normalizePhone(tenant.phone, settings.defaultCountryCode);
-  const text = encodeURIComponent(recapMessage(tenant, recap, settings));
-  return phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
+export function recapPayload(tenant: Tenant, recap: TenantRecap, settings: Settings): SendPayload {
+  return {
+    message: recapMessage(tenant, recap, settings),
+    subject: `Récapitulatif des loyers ${recap.year} - ${tenant.name}`,
+    phone: tenant.phone,
+    email: tenant.email,
+    countryCode: settings.defaultCountryCode,
+  };
 }
 
 export async function recapFile(tenant: Tenant, recap: TenantRecap, settings: Settings): Promise<File> {

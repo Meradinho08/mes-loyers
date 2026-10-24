@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Eye, FileText, Home, Receipt, Save, UserPlus, Zap } from "lucide-react";
@@ -15,7 +15,8 @@ import { ChargeList } from "@/components/charge-list";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DocumentPreview } from "@/components/document-preview";
 import { TenantDialog } from "@/components/tenant-dialog";
-import { WhatsAppIcon } from "@/components/whatsapp-dialog";
+import { SendButtons } from "@/components/send-buttons";
+import { docPayload, pdfFile } from "@/lib/whatsapp";
 import { lastMeterIndex, nextNumber, upsertDocument } from "@/lib/store";
 import { addDays, currentPeriod, formatAmount, formatPeriod, todayISO, total, uid } from "@/lib/format";
 import type { AppData, ChargePreset, DocType, LineItem, PaymentMethod, RentDocument, Settings, Tenant } from "@/lib/types";
@@ -74,6 +75,7 @@ export function initialDraft(
     tenantId: tenant?.id ?? invoice?.tenantId ?? "",
     tenantName: invoice?.tenantName ?? tenant?.name ?? "",
     tenantPhone: invoice?.tenantPhone ?? tenant?.phone ?? "",
+    tenantEmail: invoice?.tenantEmail ?? tenant?.email ?? "",
     property: invoice?.property ?? tenant?.property ?? "",
     issueDate: today,
     period,
@@ -92,6 +94,7 @@ export function DocumentEditor({ data, initial }: { data: AppData; initial: Draf
   const [tenantDialog, setTenantDialog] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const savedId = useRef<string | null>(null);
   const isEdit = !!draft.id;
   const cur = data.settings.currency;
 
@@ -114,6 +117,7 @@ export function DocumentEditor({ data, initial }: { data: AppData; initial: Draf
       tenantId: t.id,
       tenantName: t.name,
       tenantPhone: t.phone,
+      tenantEmail: t.email,
       property: t.property,
       items: itemsForTenant(t, d.period, data.settings),
     }));
@@ -154,10 +158,10 @@ export function DocumentEditor({ data, initial }: { data: AppData; initial: Draf
     return Object.keys(e).length === 0;
   }
 
-  function save(thenSend: boolean) {
+  function persist(): RentDocument | null {
     if (!validate()) {
       toast.error("Il manque des informations");
-      return;
+      return null;
     }
     const saved = upsertDocument({
       ...draft,
@@ -166,13 +170,19 @@ export function DocumentEditor({ data, initial }: { data: AppData; initial: Draf
     toast.success(
       `${saved.type === "facture" ? "Facture" : "Reçu"} ${saved.number} ${isEdit ? "mis à jour" : "enregistré"}`,
     );
-    router.push(`/documents/${saved.id}${thenSend ? "?envoyer=1" : ""}`);
+    setDraft(saved);
+    return saved;
+  }
+
+  function save() {
+    const saved = persist();
+    if (saved) router.push(`/documents/${saved.id}`);
   }
 
   const previewDoc: RentDocument = { ...draft, id: draft.id ?? "preview", createdAt: "" };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,460px)]">
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,440px)]">
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-2 rounded-xl border bg-background p-1.5">
           {(
@@ -251,6 +261,17 @@ export function DocumentEditor({ data, initial }: { data: AppData; initial: Draf
                   />
                 </div>
                 <div className="space-y-1.5">
+                  <Label htmlFor="d-email">E-mail du locataire</Label>
+                  <Input
+                    id="d-email"
+                    type="email"
+                    inputMode="email"
+                    value={draft.tenantEmail}
+                    onChange={(e) => set("tenantEmail", e.target.value)}
+                    placeholder="Facultatif"
+                  />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
                   <Label htmlFor="d-property">Logement</Label>
                   <Input id="d-property" value={draft.property} onChange={(e) => set("property", e.target.value)} />
                 </div>
@@ -488,22 +509,25 @@ export function DocumentEditor({ data, initial }: { data: AppData; initial: Draf
           </CardContent>
         </Card>
 
-        <div className="sticky bottom-20 z-20 flex flex-col gap-2 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur sm:flex-row md:bottom-4">
-          <Button
-            size="lg"
-            className="h-11 flex-1 bg-[#25D366] text-white hover:bg-[#1ebe5b]"
-            onClick={() => save(true)}
-          >
-            <WhatsAppIcon className="size-4" /> Enregistrer et envoyer
-          </Button>
-          <div className="flex gap-2">
-            <Button size="lg" variant="outline" className="h-11 flex-1" onClick={() => save(false)}>
-              <Save /> Enregistrer
+        <div className="sticky bottom-20 z-20 flex gap-1.5 rounded-xl sm:gap-2 border bg-background/95 p-2 shadow-lg backdrop-blur lg:bottom-4">
+          <SendButtons
+            variant="bar"
+            autoDownload={data.settings.autoDownloadPdf}
+            prepare={() => {
+              const saved = persist();
+              savedId.current = saved?.id ?? null;
+              return saved ? { payload: docPayload(saved, data.settings), file: () => pdfFile(saved, data.settings) } : null;
+            }}
+            onSent={() => savedId.current && router.push(`/documents/${savedId.current}`)}
+          />
+          <div className="flex gap-1.5 sm:gap-2">
+            <Button size="lg" variant="outline" className="h-11 w-10 px-0 md:w-auto md:px-3" onClick={save} aria-label="Enregistrer">
+              <Save /> <span className="hidden md:inline">Enregistrer</span>
             </Button>
             <Button
               size="lg"
               variant="outline"
-              className="h-11 lg:hidden"
+              className="h-11 w-10 px-0 md:w-auto md:px-3 xl:hidden"
               onClick={() => {
                 setShowPreview(true);
                 requestAnimationFrame(() =>
@@ -512,7 +536,7 @@ export function DocumentEditor({ data, initial }: { data: AppData; initial: Draf
               }}
               aria-label="Aperçu"
             >
-              <Eye /> Aperçu
+              <Eye /> <span className="hidden md:inline">Aperçu</span>
             </Button>
           </div>
         </div>
@@ -523,8 +547,8 @@ export function DocumentEditor({ data, initial }: { data: AppData; initial: Draf
         )}
       </div>
 
-      <div id="apercu" className={cn("scroll-mt-20 lg:block", showPreview ? "block" : "hidden")}>
-        <div className="lg:sticky lg:top-8">
+      <div id="apercu" className={cn("scroll-mt-20 xl:block", showPreview ? "block" : "hidden")}>
+        <div className="xl:sticky xl:top-8">
           <p className="mb-2 text-sm font-medium text-muted-foreground">Aperçu</p>
           <DocumentPreview doc={previewDoc} settings={data.settings} />
           {!data.settings.ownerName && (
