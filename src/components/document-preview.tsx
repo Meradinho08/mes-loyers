@@ -1,6 +1,14 @@
+import type { ReactNode } from "react";
 import type { RentDocument, Settings } from "@/lib/types";
-import { paymentPhrase } from "@/lib/types";
-import { amountInWords, formatAmount, formatDate, formatPeriod, lineDetail, total } from "@/lib/format";
+import {
+  amountInWords,
+  formatAmount,
+  formatDate,
+  formatPeriod,
+  lineDetail,
+  receiptFields,
+  total,
+} from "@/lib/format";
 import { docTitle } from "@/lib/pdf";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +25,8 @@ export function DocumentPreview({
   const sum = total(doc.items);
   const isInvoice = doc.type === "facture";
   const words = `${amountInWords(sum)} francs CFA`;
+
+  if (!isInvoice) return <ReceiptPreview doc={doc} settings={settings} className={className} />;
 
   return (
     <div className={cn("overflow-hidden rounded-xl border bg-white text-[13px] text-neutral-900 shadow-sm", className)}>
@@ -75,33 +85,23 @@ export function DocumentPreview({
           );
         })}
         <div className="mt-3 ml-auto flex max-w-xs justify-between rounded-md bg-emerald-700 px-3 py-2 font-bold text-white">
-          <span>{isInvoice ? "TOTAL À PAYER" : "TOTAL REÇU"}</span>
+          <span>TOTAL À PAYER</span>
           <span className="tabular-nums">{formatAmount(sum, cur)}</span>
         </div>
       </div>
 
       <div className="space-y-2 px-5 py-4 text-neutral-700">
-        {isInvoice ? (
-          <p>
-            Arrêtée la présente facture à la somme de <strong>{words}</strong> ({formatAmount(sum, cur)}).
-            {doc.dueDate && <> Paiement attendu au plus tard le {formatDate(doc.dueDate)}.</>}
-          </p>
-        ) : (
-          <p>
-            Je soussigné(e) {settings.ownerName || "le bailleur"}, reconnais avoir reçu de{" "}
-            {doc.tenantName || "…"} la somme de <strong>{words}</strong> ({formatAmount(sum, cur)})
-            {doc.period && <> au titre du loyer de {formatPeriod(doc.period)}</>}
-            {doc.property && <> pour le logement « {doc.property} »</>}, payée par{" "}
-            {paymentPhrase(doc.paymentMethod)}. Dont quittance.
-          </p>
-        )}
+        <p>
+          Arrêtée la présente facture à la somme de <strong>{words}</strong> ({formatAmount(sum, cur)}).
+          {doc.dueDate && <> Paiement attendu au plus tard le {formatDate(doc.dueDate)}.</>}
+        </p>
         {doc.notes && <p className="text-neutral-500">Note : {doc.notes}</p>}
       </div>
 
       <div className="flex items-end justify-between px-5 pb-6">
-        {!isInvoice || doc.paid ? (
+        {doc.paid ? (
           <span className="rounded-md border-2 border-emerald-700 px-3 py-1 text-base font-bold text-emerald-700">
-            {isInvoice ? "PAYÉE" : "PAYÉ"}
+            PAYÉE
           </span>
         ) : (
           <span />
@@ -116,6 +116,78 @@ export function DocumentPreview({
             )}
           </div>
           <div className="h-px w-40 bg-neutral-300" />
+        </div>
+      </div>
+      {settings.footerNote && (
+        <p className="border-t px-5 py-2 text-center text-[11px] text-neutral-500">{settings.footerNote}</p>
+      )}
+    </div>
+  );
+}
+
+function ReceiptPreview({ doc, settings, className }: { doc: RentDocument; settings: Settings; className?: string }) {
+  const cur = settings.currency || "FCFA";
+  const f = receiptFields(doc);
+  const rows: { label: string; value: ReactNode; placeholder: string }[] = [
+    { label: "Nom", value: f.lastName.toUpperCase(), placeholder: "Nom du locataire" },
+    { label: "Prénoms", value: f.firstNames, placeholder: "Prénoms du locataire" },
+    {
+      label: "Montant payé",
+      value: f.amount ? (
+        <>
+          <span className="block text-base font-bold tabular-nums">{formatAmount(f.amount, cur)}</span>
+          <span className="block text-xs text-neutral-500 italic">{amountInWords(f.amount)} francs CFA</span>
+        </>
+      ) : null,
+      placeholder: "0 " + cur,
+    },
+    { label: "Pour", value: f.purpose, placeholder: "Loyer" },
+    { label: "Mois", value: f.month, placeholder: "Mois concerné" },
+  ];
+
+  return (
+    <div
+      className={cn(
+        "mx-auto max-w-md overflow-hidden rounded-xl border bg-white text-[13px] text-neutral-900 shadow-sm",
+        className,
+      )}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2 bg-emerald-700 px-5 py-4 text-white">
+        <div>
+          <p className="text-lg font-bold tracking-wide uppercase">Reçu de paiement</p>
+          <p className="text-xs opacity-90">N° {doc.number}</p>
+        </div>
+        <div className="text-right text-xs opacity-90">
+          <p>Payé le {formatDate(doc.issueDate)}</p>
+          {settings.ownerName && <p>{settings.ownerName}</p>}
+        </div>
+      </div>
+
+      <dl className="divide-y px-5 py-2">
+        {rows.map((r) => (
+          <div key={r.label} className="grid grid-cols-[6.5rem_1fr] items-baseline gap-3 py-2.5">
+            <dt className="text-xs text-neutral-500">{r.label}</dt>
+            <dd className="font-medium break-words">
+              {r.value || <span className="font-normal text-neutral-400">{r.placeholder}</span>}
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      <div className="flex items-end justify-between gap-4 px-5 pt-2 pb-6">
+        <span className="rounded-md border-2 border-emerald-700 px-3 py-1 text-base font-bold text-emerald-700">
+          PAYÉ
+        </span>
+        <div className="text-right text-neutral-700">
+          <p className="text-xs">Signature du bailleur</p>
+          <div className="flex h-16 w-40 items-end justify-end">
+            {settings.signature && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={settings.signature} alt="Signature" className="max-h-16 max-w-40 object-contain" />
+            )}
+          </div>
+          <div className="h-px w-40 bg-neutral-300" />
+          {settings.ownerName && <p className="mt-1 text-xs text-neutral-500">{settings.ownerName}</p>}
         </div>
       </div>
       {settings.footerNote && (

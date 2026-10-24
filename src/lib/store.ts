@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import type { AppData, ChargePreset, DocType, LineItem, LineKind, RentDocument, Settings, Tenant } from "./types";
-import { uid } from "./format";
+import { fullName, splitName, uid } from "./format";
 
 const STORAGE_KEY = "mes-loyers:v1";
 
@@ -30,9 +30,14 @@ type LegacyItem = Partial<LineItem> & { id: string; label: string; amount: numbe
 function migrateTenant(t: LegacyTenant): Tenant {
   const chargeItems: ChargePreset[] =
     t.chargeItems ?? (t.charges ? [{ id: uid(), label: "Charges", amount: t.charges }] : []);
+  const split = splitName(t.name ?? "");
+  const lastName = t.lastName ?? split.lastName;
+  const firstNames = t.firstNames ?? split.firstNames;
   return {
     id: t.id ?? uid(),
-    name: t.name ?? "",
+    name: fullName(firstNames, lastName),
+    lastName,
+    firstNames,
     phone: t.phone ?? "",
     email: t.email ?? "",
     property: t.property ?? "",
@@ -56,6 +61,8 @@ function migrate(parsed: Partial<AppData>): AppData {
     documents: (parsed.documents ?? []).map((d) => ({
       ...d,
       tenantEmail: d.tenantEmail ?? "",
+      tenantLastName: d.tenantLastName ?? splitName(d.tenantName ?? "").lastName,
+      tenantFirstNames: d.tenantFirstNames ?? splitName(d.tenantName ?? "").firstNames,
       items: (d.items ?? []).map((i, idx) => migrateItem(i as LegacyItem, idx)),
     })),
   };
@@ -113,7 +120,8 @@ export function saveSettings(settings: Settings) {
   write({ ...read(), settings });
 }
 
-export function upsertTenant(tenant: Omit<Tenant, "id" | "createdAt"> & { id?: string }): Tenant {
+export function upsertTenant(input: Omit<Tenant, "id" | "createdAt" | "name"> & { id?: string }): Tenant {
+  const tenant = { ...input, name: fullName(input.firstNames, input.lastName) };
   const data = read();
   const existing = tenant.id ? data.tenants.find((t) => t.id === tenant.id) : undefined;
   const saved: Tenant = existing

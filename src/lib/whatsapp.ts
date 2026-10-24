@@ -1,31 +1,38 @@
 import type { RentDocument, Settings } from "./types";
-import { PAYMENT_METHODS } from "./types";
-import { formatAmount, formatDate, formatPeriod, total } from "./format";
+import { formatAmount, formatDate, formatPeriod, receiptFields, total } from "./format";
 import type { SendPayload } from "./send";
 import type { LineItem, Tenant } from "./types";
 import type { TenantRecap } from "./recap";
 import { buildPdf, buildRecapPdf, docTitle, pdfFileName, recapFileName } from "./pdf";
 
+function receiptMessage(doc: RentDocument, settings: Settings): string {
+  const f = receiptFields(doc);
+  const lines = [
+    `*REÇU DE PAIEMENT* n° ${doc.number}`,
+    "",
+    `Nom : ${f.lastName.toUpperCase() || "-"}`,
+    `Prénoms : ${f.firstNames || "-"}`,
+    `Montant payé : *${formatAmount(f.amount, settings.currency || "FCFA")}*`,
+    `Pour : ${f.purpose}`,
+  ];
+  if (f.month) lines.push(`Mois : ${f.month}`);
+  lines.push("", `Payé le ${formatDate(doc.issueDate)}. Merci !`);
+  if (settings.ownerName) lines.push(settings.ownerName);
+  return lines.join("\n");
+}
+
 export function whatsappMessage(doc: RentDocument, settings: Settings): string {
+  if (doc.type === "recu") return receiptMessage(doc, settings);
   const cur = settings.currency || "FCFA";
   const amount = formatAmount(total(doc.items), cur);
   const firstName = doc.tenantName.split(" ")[0] || doc.tenantName;
   const lines: string[] = [`Bonjour ${firstName},`, ""];
-  if (doc.type === "facture") {
-    lines.push(
-      `Voici votre facture de loyer *${doc.number}*${doc.period ? ` pour ${formatPeriod(doc.period)}` : ""}.`,
-      "",
-      `Montant à payer : *${amount}*`,
-    );
-    if (doc.dueDate) lines.push(`À régler avant le : ${formatDate(doc.dueDate)}`);
-  } else {
-    lines.push(
-      `Je vous confirme la bonne réception de votre paiement de *${amount}*${doc.period ? ` pour le loyer de ${formatPeriod(doc.period)}` : ""}.`,
-      "",
-      `Reçu n° *${doc.number}* du ${formatDate(doc.issueDate)}`,
-      `Mode de paiement : ${PAYMENT_METHODS[doc.paymentMethod]}`,
-    );
-  }
+  lines.push(
+    `Voici votre facture de loyer *${doc.number}*${doc.period ? ` pour ${formatPeriod(doc.period)}` : ""}.`,
+    "",
+    `Montant à payer : *${amount}*`,
+  );
+  if (doc.dueDate) lines.push(`À régler avant le : ${formatDate(doc.dueDate)}`);
   if (doc.items.length > 1) {
     lines.push("", "Détail :");
     for (const item of doc.items) lines.push(`- ${itemSummary(item)} : ${formatAmount(item.amount, cur)}`);

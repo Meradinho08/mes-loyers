@@ -69,7 +69,7 @@ function SettingsForm({ initial }: { initial: Settings }) {
           <Card>
             <CardHeader>
               <CardTitle>Vos coordonnées de bailleur</CardTitle>
-              <CardDescription>Le nom est repris dans la phrase « Je soussigné(e)… » des reçus.</CardDescription>
+              <CardDescription>Votre nom apparaît sur les factures et sous la signature des reçus.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5 sm:col-span-2">

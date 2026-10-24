@@ -2,7 +2,16 @@ import type { RentDocument, Settings, Tenant } from "./types";
 import type { TenantRecap } from "./recap";
 import { MONTH_STATE_LABEL } from "./recap";
 import { paymentPhrase } from "./types";
-import { amountInWords, formatAmount, formatDate, formatPeriod, lineDetail, todayISO, total } from "./format";
+import {
+  amountInWords,
+  formatAmount,
+  formatDate,
+  formatPeriod,
+  lineDetail,
+  receiptFields,
+  todayISO,
+  total,
+} from "./format";
 
 const BRAND: [number, number, number] = [4, 120, 87];
 const MUTED: [number, number, number] = [110, 110, 110];
@@ -21,7 +30,109 @@ export function pdfFileName(doc: RentDocument) {
   return `${doc.number}${who ? `-${who}` : ""}.pdf`;
 }
 
+async function buildReceiptPdf(doc: RentDocument, settings: Settings): Promise<Blob> {
+  const { jsPDF } = await import("jspdf");
+  const pdf = new jsPDF({ unit: "mm", format: "a5" });
+  const W = 148;
+  const H = 210;
+  const M = 14;
+  const cur = settings.currency || "FCFA";
+  const f = receiptFields(doc);
+
+  pdf.setFillColor(...BRAND);
+  pdf.rect(0, 0, W, 28, "F");
+  pdf.setTextColor(255, 255, 255);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(16);
+  pdf.text("REÇU DE PAIEMENT", M, 13);
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(9);
+  pdf.text(`N° ${doc.number}`, M, 21);
+  pdf.text(`Payé le ${formatDate(doc.issueDate)}`, W - M, 13, { align: "right" });
+  if (settings.ownerName) pdf.text(settings.ownerName, W - M, 21, { align: "right" });
+
+  let y = 40;
+  const labelW = 34;
+  const valueW = W - 2 * M - labelW;
+  const row = (label: string, value: string, opts: { bold?: boolean; sub?: string } = {}) => {
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(9);
+    pdf.setTextColor(...MUTED);
+    pdf.text(label, M, y);
+    pdf.setTextColor(...DARK);
+    pdf.setFont("helvetica", opts.bold ? "bold" : "normal");
+    pdf.setFontSize(opts.bold ? 13 : 11);
+    const lines = pdf.splitTextToSize(value || "-", valueW) as string[];
+    pdf.text(lines, M + labelW, y);
+    let h = lines.length * 5.5;
+    if (opts.sub) {
+      pdf.setFont("helvetica", "italic");
+      pdf.setFontSize(8.5);
+      pdf.setTextColor(...MUTED);
+      const sub = pdf.splitTextToSize(opts.sub, valueW) as string[];
+      pdf.text(sub, M + labelW, y + h);
+      h += sub.length * 4.2;
+    }
+    y += h + 3;
+    pdf.setDrawColor(229, 231, 235);
+    pdf.line(M, y - 1, W - M, y - 1);
+    y += 6;
+  };
+
+  row("Nom", f.lastName.toUpperCase());
+  row("Prénoms", f.firstNames);
+  row("Montant payé", formatAmount(f.amount, cur), {
+    bold: true,
+    sub: `${amountInWords(f.amount)} francs CFA`,
+  });
+  row("Pour", f.purpose);
+  row("Mois", f.month);
+
+  y += 2;
+  pdf.setDrawColor(...BRAND);
+  pdf.setTextColor(...BRAND);
+  pdf.setLineWidth(0.8);
+  pdf.roundedRect(M, y + 4, 32, 12, 2, 2, "S");
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(13);
+  pdf.text("PAYÉ", M + 16, y + 12, { align: "center" });
+  pdf.setLineWidth(0.2);
+
+  pdf.setTextColor(...DARK);
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(9);
+  pdf.text("Signature du bailleur", W - M, y + 2, { align: "right" });
+  if (settings.signature) {
+    try {
+      const props = pdf.getImageProperties(settings.signature);
+      const ratio = Math.min(50 / props.width, 20 / props.height);
+      const w = props.width * ratio;
+      const h = props.height * ratio;
+      pdf.addImage(settings.signature, "PNG", W - M - w, y + 25 - h, w, h);
+    } catch {
+      // An unreadable signature image should not block the receipt.
+    }
+  }
+  pdf.setDrawColor(180, 180, 180);
+  pdf.line(W - M - 50, y + 26, W - M, y + 26);
+  if (settings.ownerName) {
+    pdf.setFontSize(8.5);
+    pdf.setTextColor(...MUTED);
+    pdf.text(settings.ownerName, W - M, y + 31, { align: "right" });
+  }
+
+  if (settings.footerNote) {
+    pdf.setFontSize(8);
+    pdf.setTextColor(...MUTED);
+    const lines = pdf.splitTextToSize(settings.footerNote, W - 2 * M) as string[];
+    pdf.text(lines, W / 2, H - 10, { align: "center" });
+  }
+
+  return pdf.output("blob");
+}
+
 export async function buildPdf(doc: RentDocument, settings: Settings): Promise<Blob> {
+  if (doc.type === "recu") return buildReceiptPdf(doc, settings);
   const { jsPDF } = await import("jspdf");
   const pdf = new jsPDF({ unit: "mm", format: "a4" });
   const W = 210;
@@ -114,12 +225,7 @@ export async function buildPdf(doc: RentDocument, settings: Settings): Promise<B
     paragraph = `Arrêtée la présente facture à la somme de ${words} (${formatAmount(sum, cur)}).`;
     if (doc.dueDate) paragraph += ` Paiement attendu au plus tard le ${formatDate(doc.dueDate)}.`;
   } else {
-    paragraph =
-      `Je soussigné(e) ${settings.ownerName || "le bailleur"}, reconnais avoir reçu de ${doc.tenantName} ` +
-      `la somme de ${words} (${formatAmount(sum, cur)})` +
-      `${doc.period ? ` au titre du loyer de ${formatPeriod(doc.period)}` : ""}` +
-      `${doc.property ? ` pour le logement « ${doc.property} »` : ""}, ` +
-      `payée par ${paymentPhrase(doc.paymentMethod)}. Dont quittance.`;
+    paragraph = `Reçu la somme de ${words} (${formatAmount(sum, cur)}), payée par ${paymentPhrase(doc.paymentMethod)}.`;
   }
   const pLines = pdf.splitTextToSize(paragraph, W - 2 * M) as string[];
   pdf.text(pLines, M, y);

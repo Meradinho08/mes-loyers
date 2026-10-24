@@ -42,7 +42,10 @@ export interface ChargePreset {
 
 export interface Tenant {
   id: string;
+  /** Display name, always "Prénoms Nom". */
   name: string;
+  lastName: string;
+  firstNames: string;
   phone: string;
   email: string;
   property: string;
@@ -53,7 +56,8 @@ export interface Tenant {
   createdAt: string;
 }
 
-export type LineKind = "loyer" | "electricite" | "charge";
+/** "paiement" is the single line of a receipt: what was paid for, and how much. */
+export type LineKind = "loyer" | "electricite" | "charge" | "paiement";
 
 export interface LineItem {
   id: string;
@@ -73,6 +77,8 @@ export interface RentDocument {
   number: string;
   tenantId: string;
   tenantName: string;
+  tenantLastName: string;
+  tenantFirstNames: string;
   tenantPhone: string;
   tenantEmail: string;
   property: string;

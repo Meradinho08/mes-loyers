@@ -22,7 +22,8 @@ import { formatAmount } from "@/lib/format";
 import type { ChargePreset, Tenant } from "@/lib/types";
 
 type FormState = {
-  name: string;
+  lastName: string;
+  firstNames: string;
   phone: string;
   email: string;
   property: string;
@@ -34,7 +35,8 @@ type FormState = {
 
 function toForm(t?: Tenant | null): FormState {
   return {
-    name: t?.name ?? "",
+    lastName: t?.lastName ?? "",
+    firstNames: t?.firstNames ?? "",
     phone: t?.phone ?? "",
     email: t?.email ?? "",
     property: t?.property ?? "",
@@ -87,19 +89,20 @@ function TenantForm({
   const data = useAppData();
   const [form, setForm] = useState<FormState>(() => toForm(tenant));
   const [error, setError] = useState<string | null>(null);
-  const set = (k: "name" | "phone" | "email" | "property" | "rent" | "notes") =>
+  const set = (k: "lastName" | "firstNames" | "phone" | "email" | "property" | "rent" | "notes") =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const kwhPrice = data?.settings.electricityPrice ?? 0;
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name.trim()) {
+    if (!form.lastName.trim()) {
       setError("Le nom du locataire est obligatoire.");
       return;
     }
     const saved = upsertTenant({
       id: tenant?.id,
-      name: form.name.trim(),
+      lastName: form.lastName.trim(),
+      firstNames: form.firstNames.trim(),
       phone: form.phone.trim(),
       email: form.email.trim(),
       property: form.property.trim(),
@@ -120,10 +123,14 @@ function TenantForm({
       </DialogHeader>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label htmlFor="t-name">Nom complet *</Label>
-          <Input id="t-name" value={form.name} onChange={set("name")} placeholder="Ex. Kossi Mensah" autoFocus />
+        <div className="space-y-1.5">
+          <Label htmlFor="t-name">Nom *</Label>
+          <Input id="t-name" value={form.lastName} onChange={set("lastName")} placeholder="Ex. Mensah" autoFocus />
           {error && <p className="text-xs text-destructive">{error}</p>}
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="t-firstnames">Prénoms</Label>
+          <Input id="t-firstnames" value={form.firstNames} onChange={set("firstNames")} placeholder="Ex. Kossi Jean" />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="t-phone">Numéro WhatsApp</Label>

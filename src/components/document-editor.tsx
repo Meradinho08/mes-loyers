@@ -18,9 +18,18 @@ import { TenantDialog } from "@/components/tenant-dialog";
 import { SendButtons } from "@/components/send-buttons";
 import { docPayload, pdfFile } from "@/lib/whatsapp";
 import { lastMeterIndex, nextNumber, upsertDocument } from "@/lib/store";
-import { addDays, currentPeriod, formatAmount, formatPeriod, todayISO, total, uid } from "@/lib/format";
-import type { AppData, ChargePreset, DocType, LineItem, PaymentMethod, RentDocument, Settings, Tenant } from "@/lib/types";
-import { PAYMENT_METHODS } from "@/lib/types";
+import {
+  addDays,
+  currentPeriod,
+  formatAmount,
+  formatPeriod,
+  fullName,
+  purposeOf,
+  todayISO,
+  total,
+  uid,
+} from "@/lib/format";
+import type { AppData, ChargePreset, DocType, LineItem, RentDocument, Settings, Tenant } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Draft = Omit<RentDocument, "id" | "createdAt"> & { id?: string };
@@ -49,6 +58,11 @@ function itemsForTenant(t: Tenant | undefined, period: string, settings: Setting
   return items;
 }
 
+function receiptItems(items: LineItem[]): LineItem[] {
+  if (items.length === 1 && items[0].kind === "paiement") return items;
+  return [{ id: uid(), kind: "paiement", label: purposeOf(items), amount: total(items) }];
+}
+
 function withElectricity(line: LineItem, patch: Partial<LineItem>): LineItem {
   const next = { ...line, ...patch };
   const touchedIndex = "indexStart" in patch || "indexEnd" in patch;
@@ -63,7 +77,10 @@ export function initialDraft(
   data: AppData,
   opts: { type?: string | null; tenantId?: string | null; invoiceId?: string | null; existing?: RentDocument },
 ): Draft {
-  if (opts.existing) return { ...opts.existing };
+  if (opts.existing) {
+    const d = { ...opts.existing };
+    return d.type === "recu" ? { ...d, items: receiptItems(d.items) } : d;
+  }
   const invoice = opts.invoiceId ? data.documents.find((d) => d.id === opts.invoiceId) : undefined;
   const type: DocType = invoice ? "recu" : opts.type === "recu" ? "recu" : "facture";
   const period = invoice?.period ?? currentPeriod();
@@ -74,16 +91,22 @@ export function initialDraft(
     number: nextNumber(type),
     tenantId: tenant?.id ?? invoice?.tenantId ?? "",
     tenantName: invoice?.tenantName ?? tenant?.name ?? "",
+    tenantLastName: invoice?.tenantLastName ?? tenant?.lastName ?? "",
+    tenantFirstNames: invoice?.tenantFirstNames ?? tenant?.firstNames ?? "",
     tenantPhone: invoice?.tenantPhone ?? tenant?.phone ?? "",
     tenantEmail: invoice?.tenantEmail ?? tenant?.email ?? "",
     property: invoice?.property ?? tenant?.property ?? "",
     issueDate: today,
     period,
     dueDate: type === "facture" ? addDays(today, 5) : "",
-    items: invoice ? invoice.items.map((i) => ({ ...i, id: uid() })) : itemsForTenant(tenant, period, data.settings),
+    items: invoice
+      ? receiptItems(invoice.items)
+      : type === "recu"
+        ? receiptItems(itemsForTenant(tenant, period, data.settings))
+        : itemsForTenant(tenant, period, data.settings),
     paymentMethod: "especes",
     paid: type === "recu",
-    notes: invoice ? `Paiement de la facture ${invoice.number}` : "",
+    notes: "",
     invoiceId: invoice?.id,
   };
 }
@@ -99,12 +122,24 @@ export function DocumentEditor({ data, initial }: { data: AppData; initial: Draf
   const cur = data.settings.currency;
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((d) => ({ ...d, [key]: value }));
+  const setName = (patch: Partial<Pick<Draft, "tenantLastName" | "tenantFirstNames">>) =>
+    setDraft((d) => {
+      const next = { ...d, ...patch };
+      return { ...next, tenantName: fullName(next.tenantFirstNames, next.tenantLastName) };
+    });
 
   function changeType(type: DocType) {
     if (type === draft.type) return;
+    const tenant = data.tenants.find((t) => t.id === draft.tenantId);
     setDraft((d) => ({
       ...d,
       type,
+      items:
+        type === "recu"
+          ? receiptItems(d.items)
+          : tenant
+            ? itemsForTenant(tenant, d.period, data.settings)
+            : [{ id: uid(), kind: "loyer", label: rentLabel(d.period), amount: total(d.items) }],
       number: isEdit ? d.number : nextNumber(type),
       paid: type === "recu" ? true : d.paid,
       dueDate: type === "facture" && !d.dueDate ? addDays(d.issueDate, 5) : d.dueDate,
@@ -116,10 +151,15 @@ export function DocumentEditor({ data, initial }: { data: AppData; initial: Draf
       ...d,
       tenantId: t.id,
       tenantName: t.name,
+      tenantLastName: t.lastName,
+      tenantFirstNames: t.firstNames,
       tenantPhone: t.phone,
       tenantEmail: t.email,
       property: t.property,
-      items: itemsForTenant(t, d.period, data.settings),
+      items:
+        d.type === "recu"
+          ? receiptItems(itemsForTenant(t, d.period, data.settings))
+          : itemsForTenant(t, d.period, data.settings),
     }));
     setErrors((e) => ({ ...e, tenant: "" }));
   }
@@ -151,9 +191,10 @@ export function DocumentEditor({ data, initial }: { data: AppData; initial: Draf
 
   function validate() {
     const e: Record<string, string> = {};
-    if (!draft.tenantName.trim()) e.tenant = "Choisissez un locataire.";
+    if (!draft.tenantName.trim()) e.tenant = "Choisissez un locataire ou saisissez son nom.";
     if (!draft.number.trim()) e.number = "Le numéro est obligatoire.";
-    if (!draft.items.length || total(draft.items) <= 0) e.items = "Ajoutez au moins une ligne avec un montant.";
+    if (!draft.items.length || total(draft.items) <= 0)
+      e.items = draft.type === "recu" ? "Indiquez le montant payé." : "Ajoutez au moins une ligne avec un montant.";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -248,6 +289,28 @@ export function DocumentEditor({ data, initial }: { data: AppData; initial: Draf
               </Button>
             )}
             {errors.tenant && <p className="text-xs text-destructive">{errors.tenant}</p>}
+            {(draft.tenantName || draft.type === "recu") && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="d-lastname">Nom</Label>
+                  <Input
+                    id="d-lastname"
+                    value={draft.tenantLastName}
+                    onChange={(e) => setName({ tenantLastName: e.target.value })}
+                    placeholder="Mensah"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="d-firstnames">Prénoms</Label>
+                  <Input
+                    id="d-firstnames"
+                    value={draft.tenantFirstNames}
+                    onChange={(e) => setName({ tenantFirstNames: e.target.value })}
+                    placeholder="Kossi"
+                  />
+                </div>
+              </div>
+            )}
             {draft.tenantName && (
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
@@ -280,234 +343,270 @@ export function DocumentEditor({ data, initial }: { data: AppData; initial: Draf
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Détails</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="d-number">Numéro</Label>
-              <Input
-                id="d-number"
-                value={draft.number}
-                onChange={(e) => set("number", e.target.value)}
-                aria-invalid={!!errors.number}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="d-period">Mois concerné</Label>
-              <Input id="d-period" type="month" value={draft.period} onChange={(e) => changePeriod(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="d-date">{draft.type === "facture" ? "Date de la facture" : "Date du paiement"}</Label>
-              <Input id="d-date" type="date" value={draft.issueDate} onChange={(e) => set("issueDate", e.target.value)} />
-            </div>
-            {draft.type === "facture" ? (
+        {draft.type === "recu" ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Receipt className="size-4 text-primary" /> Paiement reçu
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="r-amount">Montant payé ({cur})</Label>
+                <Input
+                  id="r-amount"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={draft.items[0]?.amount || ""}
+                  onChange={(e) =>
+                    set("items", [{ ...receiptItems(draft.items)[0], amount: Number(e.target.value) || 0 }])
+                  }
+                  placeholder="0"
+                  className="h-12 text-lg font-semibold tabular-nums"
+                  aria-invalid={!!errors.items}
+                />
+                {errors.items && <p className="text-xs text-destructive">{errors.items}</p>}
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="r-purpose">Pour</Label>
+                <Input
+                  id="r-purpose"
+                  value={draft.items[0]?.label ?? ""}
+                  onChange={(e) => set("items", [{ ...receiptItems(draft.items)[0], label: e.target.value }])}
+                  placeholder="Ex. Loyer, électricité, eau"
+                  className="h-10"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="d-period">Mois</Label>
+                <Input id="d-period" type="month" value={draft.period} onChange={(e) => set("period", e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="d-date">Date du paiement</Label>
+                <Input id="d-date" type="date" value={draft.issueDate} onChange={(e) => set("issueDate", e.target.value)} />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="d-number">Numéro du reçu</Label>
+                <Input
+                  id="d-number"
+                  value={draft.number}
+                  onChange={(e) => set("number", e.target.value)}
+                  aria-invalid={!!errors.number}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Détails</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="d-number">Numéro</Label>
+                <Input
+                  id="d-number"
+                  value={draft.number}
+                  onChange={(e) => set("number", e.target.value)}
+                  aria-invalid={!!errors.number}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="d-period">Mois concerné</Label>
+                <Input id="d-period" type="month" value={draft.period} onChange={(e) => changePeriod(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="d-date">Date de la facture</Label>
+                <Input id="d-date" type="date" value={draft.issueDate} onChange={(e) => set("issueDate", e.target.value)} />
+              </div>
               <div className="space-y-1.5">
                 <Label htmlFor="d-due">À payer avant le</Label>
                 <Input id="d-due" type="date" value={draft.dueDate} onChange={(e) => set("dueDate", e.target.value)} />
               </div>
-            ) : (
-              <div className="space-y-1.5">
-                <Label>Mode de paiement</Label>
-                <Select
-                  value={draft.paymentMethod}
-                  onValueChange={(v) => v && set("paymentMethod", v as PaymentMethod)}
-                  items={Object.entries(PAYMENT_METHODS).map(([value, label]) => ({ value, label }))}
-                >
-                  <SelectTrigger className="h-8 w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(PAYMENT_METHODS).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Home className="size-4 text-primary" /> Loyer
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {rent ? (
-              <div className="flex gap-2">
-                <Input
-                  value={rent.label}
-                  onChange={(e) => setLines({ ...rent, label: e.target.value }, electricity, charges)}
-                  className="h-10 flex-1"
-                  aria-label="Libellé du loyer"
-                />
-                <Input
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  value={rent.amount || ""}
-                  onChange={(e) => setLines({ ...rent, amount: Number(e.target.value) || 0 }, electricity, charges)}
-                  placeholder="0"
-                  className="h-10 w-28 text-right tabular-nums sm:w-36"
-                  aria-label="Montant du loyer"
-                />
-              </div>
-            ) : (
-              <Button
-                variant="outline"
-                onClick={() =>
-                  setLines({ id: uid(), kind: "loyer", label: rentLabel(draft.period), amount: 0 }, electricity, charges)
-                }
-              >
-                Ajouter le loyer
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-3">
-            <CardTitle className="flex items-center gap-2">
-              <Zap className="size-4 text-amber-500" /> Électricité
-            </CardTitle>
-            <Switch
-              checked={!!electricity}
-              onCheckedChange={(on) =>
-                setLines(
-                  rent,
-                  on ? electricityLine(data.settings, draft.tenantId ? lastMeterIndex(draft.tenantId, draft.id) : null) : undefined,
-                  charges,
-                )
-              }
-              aria-label="Facturer l'électricité"
-            />
-          </CardHeader>
-          {electricity ? (
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="e-start">Ancien index</Label>
-                  <Input
-                    id="e-start"
-                    type="number"
-                    inputMode="decimal"
-                    step="any"
-                    value={electricity.indexStart ?? ""}
-                    onChange={(e) => updateElectricity({ indexStart: numOrNull(e.target.value) })}
-                    placeholder="—"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="e-end">Nouvel index</Label>
-                  <Input
-                    id="e-end"
-                    type="number"
-                    inputMode="decimal"
-                    step="any"
-                    value={electricity.indexEnd ?? ""}
-                    onChange={(e) => updateElectricity({ indexEnd: numOrNull(e.target.value) })}
-                    placeholder="—"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="e-kwh">kWh consommés</Label>
-                  <Input
-                    id="e-kwh"
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    step="any"
-                    value={electricity.quantity || ""}
-                    onChange={(e) => updateElectricity({ quantity: Number(e.target.value) || 0 })}
-                    placeholder="0"
-                    className="font-medium"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="e-price">Prix du kWh</Label>
-                  <Input
-                    id="e-price"
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    step="any"
-                    value={electricity.unitPrice || ""}
-                    onChange={(e) => updateElectricity({ unitPrice: Number(e.target.value) || 0 })}
-                    placeholder="0"
-                  />
-                </div>
-              </div>
-              {electricity.indexStart != null &&
-                electricity.indexEnd != null &&
-                electricity.indexEnd < electricity.indexStart && (
-                  <p className="text-xs text-destructive">Le nouvel index doit être supérieur à l&apos;ancien.</p>
-                )}
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm">
-                <span className="text-amber-900">
-                  {electricity.quantity || 0} kWh × {formatAmount(electricity.unitPrice || 0, cur)}
-                </span>
-                <span className="font-semibold tabular-nums text-amber-900">{formatAmount(electricity.amount, cur)}</span>
-              </div>
-              {!data.settings.electricityPrice && (
-                <p className="text-xs text-muted-foreground">
-                  Astuce : enregistrez votre prix du kWh dans{" "}
-                  <Link href="/parametres" className="text-primary underline">
-                    les paramètres
-                  </Link>{" "}
-                  pour qu&apos;il soit rempli automatiquement.
-                </p>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Remplissez les deux index pour calculer la consommation, ou saisissez directement les kWh.
-              </p>
             </CardContent>
-          ) : (
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Home className="size-4 text-primary" /> Loyer
+              </CardTitle>
+            </CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground">Activez pour facturer l&apos;électricité au kWh.</p>
+              {rent ? (
+                <div className="flex gap-2">
+                  <Input
+                    value={rent.label}
+                    onChange={(e) => setLines({ ...rent, label: e.target.value }, electricity, charges)}
+                    className="h-10 flex-1"
+                    aria-label="Libellé du loyer"
+                  />
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    value={rent.amount || ""}
+                    onChange={(e) => setLines({ ...rent, amount: Number(e.target.value) || 0 }, electricity, charges)}
+                    placeholder="0"
+                    className="h-10 w-28 text-right tabular-nums sm:w-36"
+                    aria-label="Montant du loyer"
+                  />
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    setLines({ id: uid(), kind: "loyer", label: rentLabel(draft.period), amount: 0 }, electricity, charges)
+                  }
+                >
+                  Ajouter le loyer
+                </Button>
+              )}
             </CardContent>
-          )}
-        </Card>
+          </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Receipt className="size-4 text-primary" /> Charges
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <ChargeList
-              items={charges.map((c) => ({ id: c.id, label: c.label, amount: c.amount }))}
-              onChange={setCharges}
-              presets={data.settings.chargeCatalog}
-              emptyText="Aucune charge sur ce document."
-            />
-            {errors.items && <p className="text-xs text-destructive">{errors.items}</p>}
-            <div className="flex items-center justify-end border-t pt-3">
-              <p className="text-right">
-                <span className="mr-2 text-sm text-muted-foreground">Total</span>
-                <span className="text-xl font-semibold tabular-nums">{formatAmount(total(draft.items), cur)}</span>
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-3">
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="size-4 text-amber-500" /> Électricité
+              </CardTitle>
+              <Switch
+                checked={!!electricity}
+                onCheckedChange={(on) =>
+                  setLines(
+                    rent,
+                    on ? electricityLine(data.settings, draft.tenantId ? lastMeterIndex(draft.tenantId, draft.id) : null) : undefined,
+                    charges,
+                  )
+                }
+                aria-label="Facturer l'électricité"
+              />
+            </CardHeader>
+            {electricity ? (
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="e-start">Ancien index</Label>
+                    <Input
+                      id="e-start"
+                      type="number"
+                      inputMode="decimal"
+                      step="any"
+                      value={electricity.indexStart ?? ""}
+                      onChange={(e) => updateElectricity({ indexStart: numOrNull(e.target.value) })}
+                      placeholder="—"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="e-end">Nouvel index</Label>
+                    <Input
+                      id="e-end"
+                      type="number"
+                      inputMode="decimal"
+                      step="any"
+                      value={electricity.indexEnd ?? ""}
+                      onChange={(e) => updateElectricity({ indexEnd: numOrNull(e.target.value) })}
+                      placeholder="—"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="e-kwh">kWh consommés</Label>
+                    <Input
+                      id="e-kwh"
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step="any"
+                      value={electricity.quantity || ""}
+                      onChange={(e) => updateElectricity({ quantity: Number(e.target.value) || 0 })}
+                      placeholder="0"
+                      className="font-medium"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="e-price">Prix du kWh</Label>
+                    <Input
+                      id="e-price"
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step="any"
+                      value={electricity.unitPrice || ""}
+                      onChange={(e) => updateElectricity({ unitPrice: Number(e.target.value) || 0 })}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+                {electricity.indexStart != null &&
+                  electricity.indexEnd != null &&
+                  electricity.indexEnd < electricity.indexStart && (
+                    <p className="text-xs text-destructive">Le nouvel index doit être supérieur à l&apos;ancien.</p>
+                  )}
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm">
+                  <span className="text-amber-900">
+                    {electricity.quantity || 0} kWh × {formatAmount(electricity.unitPrice || 0, cur)}
+                  </span>
+                  <span className="font-semibold tabular-nums text-amber-900">{formatAmount(electricity.amount, cur)}</span>
+                </div>
+                {!data.settings.electricityPrice && (
+                  <p className="text-xs text-muted-foreground">
+                    Astuce : enregistrez votre prix du kWh dans{" "}
+                    <Link href="/parametres" className="text-primary underline">
+                      les paramètres
+                    </Link>{" "}
+                    pour qu&apos;il soit rempli automatiquement.
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Remplissez les deux index pour calculer la consommation, ou saisissez directement les kWh.
+                </p>
+              </CardContent>
+            ) : (
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Activez pour facturer l&apos;électricité au kWh.</p>
+              </CardContent>
+            )}
+          </Card>
 
-        <Card>
-          <CardContent className="space-y-1.5">
-            <Label htmlFor="d-notes">Note (facultatif)</Label>
-            <Textarea
-              id="d-notes"
-              value={draft.notes}
-              onChange={(e) => set("notes", e.target.value)}
-              placeholder="Ex. Reste à payer : 10 000 FCFA"
-              rows={2}
-            />
-          </CardContent>
-        </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Receipt className="size-4 text-primary" /> Charges
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <ChargeList
+                items={charges.map((c) => ({ id: c.id, label: c.label, amount: c.amount }))}
+                onChange={setCharges}
+                presets={data.settings.chargeCatalog}
+                emptyText="Aucune charge sur ce document."
+              />
+              {errors.items && <p className="text-xs text-destructive">{errors.items}</p>}
+              <div className="flex items-center justify-end border-t pt-3">
+                <p className="text-right">
+                  <span className="mr-2 text-sm text-muted-foreground">Total</span>
+                  <span className="text-xl font-semibold tabular-nums">{formatAmount(total(draft.items), cur)}</span>
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="space-y-1.5">
+              <Label htmlFor="d-notes">Note (facultatif)</Label>
+              <Textarea
+                id="d-notes"
+                value={draft.notes}
+                onChange={(e) => set("notes", e.target.value)}
+                placeholder="Ex. Reste à payer : 10 000 FCFA"
+                rows={2}
+              />
+            </CardContent>
+          </Card>
+          </>
+        )}
 
         <div className="sticky bottom-20 z-20 flex gap-1.5 rounded-xl sm:gap-2 border bg-background/95 p-2 shadow-lg backdrop-blur lg:bottom-4">
           <SendButtons

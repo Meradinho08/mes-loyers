@@ -1,4 +1,4 @@
-import type { LineItem, Tenant } from "./types";
+import type { LineItem, RentDocument, Tenant } from "./types";
 
 const MONTHS = [
   "janvier",
@@ -170,4 +170,42 @@ export function lineDetail(item: LineItem): string[] {
     lines.push(`Index ${num(item.indexStart)} à ${num(item.indexEnd)}`);
   }
   return lines;
+}
+
+/** Best guess for names typed as one field: the last word is taken as the family name. */
+export function splitName(name: string): { lastName: string; firstNames: string } {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return { lastName: parts[0] ?? "", firstNames: "" };
+  return { lastName: parts[parts.length - 1], firstNames: parts.slice(0, -1).join(" ") };
+}
+
+export function fullName(firstNames: string, lastName: string): string {
+  return [firstNames.trim(), lastName.trim()].filter(Boolean).join(" ");
+}
+
+/** One-line summary of what an invoice covers, used as the "Pour" of a receipt. */
+export function purposeOf(items: LineItem[]): string {
+  const parts = items
+    .filter((i) => i.amount > 0 || i.kind === "paiement")
+    .map((i) => {
+      if (i.kind === "loyer") return "Loyer";
+      if (i.kind === "electricite") return `Électricité (${i.quantity || 0} kWh)`;
+      return i.label.trim();
+    })
+    .filter(Boolean);
+  return parts.join(", ") || "Loyer";
+}
+
+export function receiptFields(doc: RentDocument) {
+  const hasParts = Boolean(doc.tenantLastName?.trim() || doc.tenantFirstNames?.trim());
+  const names = hasParts
+    ? { lastName: doc.tenantLastName ?? "", firstNames: doc.tenantFirstNames ?? "" }
+    : splitName(doc.tenantName || "");
+  return {
+    lastName: names.lastName.trim(),
+    firstNames: names.firstNames.trim(),
+    amount: total(doc.items),
+    purpose: purposeOf(doc.items),
+    month: doc.period ? formatPeriod(doc.period) : "",
+  };
 }
