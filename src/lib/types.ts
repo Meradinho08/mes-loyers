@@ -68,3 +68,8 @@ export interface AppData {
   tenants: Tenant[];
   documents: RentDocument[];
 }
+
+export function paymentPhrase(method: PaymentMethod): string {
+  const label = PAYMENT_METHODS[method];
+  return method === "tmoney" || method === "flooz" ? label : label.toLowerCase();
+}

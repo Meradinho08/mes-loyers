@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { FileText, Home, Plus, Settings, Users } from "lucide-react";
@@ -17,9 +18,53 @@ function isActive(pathname: string, href: string) {
   return pathname === href || (pathname.startsWith(href + "/") && !pathname.startsWith("/documents/nouveau"));
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+function SideNav({ pathname }: { pathname: string }) {
+  return (
+    <nav className="flex flex-col gap-1">
+      {NAV.map(({ href, label, icon: Icon }) => (
+        <Link
+          key={href}
+          href={href}
+          className={cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground",
+            isActive(pathname, href) && "bg-primary/10 font-medium text-primary hover:bg-primary/10 hover:text-primary",
+          )}
+        >
+          <Icon className="size-4" />
+          {label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
 
+function BottomNav({ pathname }: { pathname: string }) {
+  return (
+    <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t bg-background pb-[env(safe-area-inset-bottom)] md:hidden">
+      {NAV.slice(0, 2).map((item) => (
+        <MobileNavItem key={item.href} {...item} active={isActive(pathname, item.href)} />
+      ))}
+      <Link href="/documents/nouveau" className="flex items-center justify-center" aria-label="Nouveau document">
+        <span className="-mt-6 flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-4 ring-background">
+          <Plus className="size-6" />
+        </span>
+      </Link>
+      {NAV.slice(2).map((item) => (
+        <MobileNavItem key={item.href} {...item} active={isActive(pathname, item.href)} />
+      ))}
+    </nav>
+  );
+}
+
+function ActiveSideNav() {
+  return <SideNav pathname={usePathname()} />;
+}
+
+function ActiveBottomNav() {
+  return <BottomNav pathname={usePathname()} />;
+}
+
+export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen">
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r bg-background p-4 md:flex">
@@ -38,21 +83,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         >
           <Plus className="size-4" /> Nouveau document
         </Link>
-        <nav className="flex flex-col gap-1">
-          {NAV.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground",
-                isActive(pathname, href) && "bg-primary/10 font-medium text-primary hover:bg-primary/10 hover:text-primary",
-              )}
-            >
-              <Icon className="size-4" />
-              {label}
-            </Link>
-          ))}
-        </nav>
+        <Suspense fallback={<SideNav pathname="" />}>
+          <ActiveSideNav />
+        </Suspense>
         <p className="mt-auto px-2 text-xs text-muted-foreground">
           Vos données restent enregistrées sur cet appareil.
         </p>
@@ -70,19 +103,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 pt-6 pb-28 md:px-8 md:py-8">{children}</main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t bg-background pb-[env(safe-area-inset-bottom)] md:hidden">
-        {NAV.slice(0, 2).map((item) => (
-          <MobileNavItem key={item.href} {...item} active={isActive(pathname, item.href)} />
-        ))}
-        <Link href="/documents/nouveau" className="flex items-center justify-center" aria-label="Nouveau document">
-          <span className="-mt-6 flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-4 ring-background">
-            <Plus className="size-6" />
-          </span>
-        </Link>
-        {NAV.slice(2).map((item) => (
-          <MobileNavItem key={item.href} {...item} active={isActive(pathname, item.href)} />
-        ))}
-      </nav>
+      <Suspense fallback={<BottomNav pathname="" />}>
+        <ActiveBottomNav />
+      </Suspense>
     </div>
   );
 }

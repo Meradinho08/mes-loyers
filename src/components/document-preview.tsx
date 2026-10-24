@@ -1,5 +1,5 @@
 import type { RentDocument, Settings } from "@/lib/types";
-import { PAYMENT_METHODS } from "@/lib/types";
+import { paymentPhrase } from "@/lib/types";
 import { amountInWords, formatAmount, formatDate, formatPeriod, total } from "@/lib/format";
 import { docTitle } from "@/lib/pdf";
 import { cn } from "@/lib/utils";
@@ -76,7 +76,7 @@ export function DocumentPreview({
             {doc.tenantName || "…"} la somme de <strong>{words}</strong> ({formatAmount(sum, cur)})
             {doc.period && <> au titre du loyer de {formatPeriod(doc.period)}</>}
             {doc.property && <> pour le logement « {doc.property} »</>}, payée par{" "}
-            {PAYMENT_METHODS[doc.paymentMethod].toLowerCase()}. Dont quittance.
+            {paymentPhrase(doc.paymentMethod)}. Dont quittance.
           </p>
         )}
         {doc.notes && <p className="text-neutral-500">Note : {doc.notes}</p>}

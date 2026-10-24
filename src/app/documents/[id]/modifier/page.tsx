@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FileQuestion } from "lucide-react";
@@ -9,6 +10,14 @@ import { DocumentEditor, initialDraft } from "@/components/document-editor";
 import { useAppData } from "@/lib/store";
 
 export default function EditDocumentPage() {
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <EditDocument />
+    </Suspense>
+  );
+}
+
+function EditDocument() {
   const { id } = useParams<{ id: string }>();
   const data = useAppData();
   if (!data) return <PageLoading />;

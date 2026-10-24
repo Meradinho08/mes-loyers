@@ -1,5 +1,5 @@
 import type { RentDocument, Settings } from "./types";
-import { PAYMENT_METHODS } from "./types";
+import { paymentPhrase } from "./types";
 import { amountInWords, formatAmount, formatDate, formatPeriod, total } from "./format";
 
 const BRAND: [number, number, number] = [4, 120, 87];
@@ -110,7 +110,7 @@ export async function buildPdf(doc: RentDocument, settings: Settings): Promise<B
       `la somme de ${words} (${formatAmount(sum, cur)})` +
       `${doc.period ? ` au titre du loyer de ${formatPeriod(doc.period)}` : ""}` +
       `${doc.property ? ` pour le logement « ${doc.property} »` : ""}, ` +
-      `payée par ${PAYMENT_METHODS[doc.paymentMethod].toLowerCase()}. Dont quittance.`;
+      `payée par ${paymentPhrase(doc.paymentMethod)}. Dont quittance.`;
   }
   const pLines = pdf.splitTextToSize(paragraph, W - 2 * M) as string[];
   pdf.text(pLines, M, y);
