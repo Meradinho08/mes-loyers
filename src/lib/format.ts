@@ -1,4 +1,4 @@
-import type { LineItem } from "./types";
+import type { LineItem, Tenant } from "./types";
 
 const MONTHS = [
   "janvier",
@@ -56,6 +56,15 @@ export function addDays(iso: string, days: number): string {
 
 export function total(items: LineItem[]): number {
   return items.reduce((sum, i) => sum + (Number(i.amount) || 0), 0);
+}
+
+/** Fixed monthly amount (rent + flat charges); metered electricity comes on top. */
+export function tenantMonthly(t: Tenant): number {
+  return t.rent + t.chargeItems.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+}
+
+export function formatNumber(n: number): string {
+  return formatAmount(n, "").trim();
 }
 
 export function uid(): string {
@@ -147,4 +156,18 @@ export function normalizePhone(phone: string, countryCode = "228"): string {
   if (!digits) return "";
   if (digits.length <= 8) digits = countryCode.replace(/\D/g, "") + digits;
   return digits;
+}
+
+function num(n: number): string {
+  return Number.isInteger(n) ? formatAmount(n, "").trim() : String(n).replace(".", ",");
+}
+
+/** Second-column detail shown on documents, e.g. "120 kWh x 300". */
+export function lineDetail(item: LineItem): string[] {
+  if (item.kind !== "electricite") return [];
+  const lines = [`${num(item.quantity || 0)} kWh x ${num(item.unitPrice || 0)}`];
+  if (item.indexStart != null && item.indexEnd != null) {
+    lines.push(`Index ${num(item.indexStart)} à ${num(item.indexEnd)}`);
+  }
+  return lines;
 }

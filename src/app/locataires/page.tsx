@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { FileText, MoreVertical, Pencil, Phone, Plus, Receipt, Search, Trash2, Users } from "lucide-react";
+import { FileText, History, MoreVertical, Pencil, Phone, Plus, Receipt, Search, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -28,6 +28,7 @@ import { EmptyState, PageHeader, PageLoading } from "@/components/common";
 import { TenantDialog } from "@/components/tenant-dialog";
 import { deleteTenant, useAppData } from "@/lib/store";
 import { formatAmount } from "@/lib/format";
+import { tenantMonthly } from "@/lib/format";
 import type { Tenant } from "@/lib/types";
 
 export default function TenantsPage() {
@@ -117,6 +118,9 @@ export default function TenantsPage() {
                             <MoreVertical />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem render={<Link href={`/historique/${t.id}`} />}>
+                              <History /> Historique
+                            </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => {
                                 setEditing(t);
@@ -135,8 +139,10 @@ export default function TenantsPage() {
 
                       <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
                         <div className="rounded-lg bg-muted/60 p-2">
-                          <p className="text-xs text-muted-foreground">Loyer + charges</p>
-                          <p className="font-medium tabular-nums">{formatAmount(t.rent + t.charges, data.settings.currency)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Loyer + charges{t.meteredElectricity ? " + élec." : ""}
+                          </p>
+                          <p className="font-medium tabular-nums">{formatAmount(tenantMonthly(t), data.settings.currency)}</p>
                         </div>
                         <div className="rounded-lg bg-muted/60 p-2">
                           <p className="text-xs text-muted-foreground">Impayés</p>
@@ -145,11 +151,18 @@ export default function TenantsPage() {
                           </p>
                         </div>
                       </div>
-                      {t.phone && (
-                        <p className="mt-3 flex items-center gap-1.5 text-sm text-muted-foreground">
-                          <Phone className="size-3.5" /> {t.phone}
-                        </p>
-                      )}
+                      <div className="mt-3 flex items-center justify-between gap-2 text-sm text-muted-foreground">
+                        <span className="flex items-center gap-1.5">
+                          {t.phone && (
+                            <>
+                              <Phone className="size-3.5" /> {t.phone}
+                            </>
+                          )}
+                        </span>
+                        <Link href={`/historique/${t.id}`} className="flex items-center gap-1 text-primary hover:underline">
+                          <History className="size-3.5" /> Historique
+                        </Link>
+                      </div>
 
                       <div className="mt-4 grid grid-cols-2 gap-2">
                         <Link

@@ -5,7 +5,16 @@ en quelques secondes et **envoyez-les directement sur WhatsApp** (PDF + message 
 
 ## Fonctionnalités
 
-- **Locataires** : nom, numéro WhatsApp, logement, loyer et charges mensuels.
+- **Locataires** : nom, numéro WhatsApp, logement, loyer, charges fixes détaillées (eau, gardiennage…) et électricité au compteur.
+- **Électricité au kWh** : le prix du kWh se règle dans les paramètres (ex. 1 kWh = 300 FCFA). Sur la facture, saisissez
+  l'ancien et le nouvel index (ou directement les kWh) : la consommation et le montant sont calculés automatiquement.
+  L'ancien index est repris de la facture précédente du locataire.
+- **Charges détaillées** : chaque charge apparaît sur sa propre ligne avec son prix ; une liste de charges habituelles
+  (Paramètres) permet de les ajouter en un clic.
+- **Signature** : dessinez-la au doigt ou à la souris, ou importez une photo (le fond blanc est retiré) ; elle est
+  ajoutée automatiquement sur tous les documents.
+- **Historique** : récapitulatif par locataire et par année (facturé, payé, reste à payer, kWh), grille mois par mois,
+  relevés d'électricité, et récapitulatif PDF à télécharger ou envoyer sur WhatsApp.
 - **Factures et reçus** numérotés automatiquement (`FAC-2026-001`, `REC-2026-001`), avec aperçu en direct.
   - Montant écrit en toutes lettres (« soixante-quinze mille francs CFA »), mention « Dont quittance » sur les reçus.
   - Modes de paiement : espèces, T-Money, Flooz, virement, chèque.

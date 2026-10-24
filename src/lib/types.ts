@@ -25,6 +25,17 @@ export interface Settings {
   currency: string;
   defaultCountryCode: string;
   footerNote: string;
+  /** PNG data URL, drawn or uploaded in the settings page. */
+  signature: string;
+  /** Price of one kWh, in the settings currency. */
+  electricityPrice: number;
+  chargeCatalog: ChargePreset[];
+}
+
+export interface ChargePreset {
+  id: string;
+  label: string;
+  amount: number;
 }
 
 export interface Tenant {
@@ -33,15 +44,24 @@ export interface Tenant {
   phone: string;
   property: string;
   rent: number;
-  charges: number;
+  chargeItems: ChargePreset[];
+  meteredElectricity: boolean;
   notes: string;
   createdAt: string;
 }
 
+export type LineKind = "loyer" | "electricite" | "charge";
+
 export interface LineItem {
   id: string;
+  kind: LineKind;
   label: string;
   amount: number;
+  /** Electricity lines only: meter readings and consumed kWh. */
+  indexStart?: number | null;
+  indexEnd?: number | null;
+  quantity?: number;
+  unitPrice?: number;
 }
 
 export interface RentDocument {

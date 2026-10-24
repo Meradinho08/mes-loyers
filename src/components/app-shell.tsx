@@ -3,12 +3,13 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText, Home, Plus, Settings, Users } from "lucide-react";
+import { FileText, History, Home, Plus, Settings, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/", label: "Accueil", icon: Home },
   { href: "/documents", label: "Documents", icon: FileText },
+  { href: "/historique", label: "Historique", icon: History },
   { href: "/locataires", label: "Locataires", icon: Users },
   { href: "/parametres", label: "Paramètres", icon: Settings },
 ];
@@ -49,7 +50,7 @@ function BottomNav({ pathname }: { pathname: string }) {
           <Plus className="size-6" />
         </span>
       </Link>
-      {NAV.slice(2).map((item) => (
+      {NAV.slice(2, 4).map((item) => (
         <MobileNavItem key={item.href} {...item} active={isActive(pathname, item.href)} />
       ))}
     </nav>
@@ -98,6 +99,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Home className="size-4" />
             </span>
             Mes Loyers
+          </Link>
+          <Link
+            href="/parametres"
+            aria-label="Paramètres"
+            className="flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+          >
+            <Settings className="size-5" />
           </Link>
         </header>
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 pt-6 pb-28 md:px-8 md:py-8">{children}</main>

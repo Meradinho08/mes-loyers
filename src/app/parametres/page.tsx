@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Download, Upload } from "lucide-react";
+import { Download, PenLine, Receipt, Upload, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,8 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PageHeader, PageLoading } from "@/components/common";
+import { ChargeList } from "@/components/charge-list";
+import { SignaturePad } from "@/components/signature-pad";
 import { exportData, importData, saveSettings, useAppData } from "@/lib/store";
-import { todayISO } from "@/lib/format";
+import { formatAmount, todayISO } from "@/lib/format";
 import type { Settings } from "@/lib/types";
 
 export default function SettingsPage() {
@@ -21,13 +23,20 @@ export default function SettingsPage() {
 
 function SettingsForm({ initial }: { initial: Settings }) {
   const [form, setForm] = useState<Settings>(initial);
+  const stored = useAppData();
   const fileRef = useRef<HTMLInputElement>(null);
-  const set = (k: keyof Settings) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+  const set = (k: "ownerName" | "phone" | "address" | "email" | "currency" | "defaultCountryCode" | "footerNote") => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    saveSettings({ ...form, currency: form.currency.trim() || "FCFA" });
+    saveSettings({
+      ...form,
+      signature: stored?.settings.signature ?? form.signature,
+      currency: form.currency.trim() || "FCFA",
+      electricityPrice: Number(form.electricityPrice) || 0,
+      chargeCatalog: form.chargeCatalog.filter((c) => c.label.trim()),
+    });
     toast.success("Paramètres enregistrés");
   }
 
@@ -55,7 +64,7 @@ function SettingsForm({ initial }: { initial: Settings }) {
     <>
       <PageHeader title="Paramètres" description="Ces informations apparaissent sur toutes vos factures et tous vos reçus." />
       <div className="grid max-w-3xl gap-6">
-        <form onSubmit={submit}>
+        <form onSubmit={submit} className="grid gap-6">
           <Card>
             <CardHeader>
               <CardTitle>Vos coordonnées de bailleur</CardTitle>
@@ -96,13 +105,66 @@ function SettingsForm({ initial }: { initial: Settings }) {
                 <Label htmlFor="s-footer">Mention en bas des documents</Label>
                 <Textarea id="s-footer" value={form.footerNote} onChange={set("footerNote")} rows={2} />
               </div>
-              <div className="sm:col-span-2">
-                <Button type="submit" size="lg" className="h-10 w-full sm:w-auto">
-                  Enregistrer
-                </Button>
-              </div>
             </CardContent>
           </Card>
+
+          <SignatureCard />
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="size-4 text-amber-500" /> Électricité
+              </CardTitle>
+              <CardDescription>
+                Sur les factures, vous saisissez seulement les kWh consommés (ou les index du compteur) : le montant est
+                calculé automatiquement.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-1.5">
+              <Label htmlFor="s-kwh">Prix du kWh ({form.currency || "FCFA"})</Label>
+              <Input
+                id="s-kwh"
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="any"
+                value={form.electricityPrice || ""}
+                onChange={(e) => setForm((f) => ({ ...f, electricityPrice: Number(e.target.value) || 0 }))}
+                placeholder="Ex. 300"
+                className="max-w-48"
+              />
+              <p className="text-xs text-muted-foreground">
+                {form.electricityPrice
+                  ? `Exemple : 50 kWh = ${formatAmount(50 * form.electricityPrice, form.currency)}`
+                  : "Ex. 1 kWh = 300 FCFA"}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Receipt className="size-4 text-primary" /> Charges proposées
+              </CardTitle>
+              <CardDescription>
+                Votre liste de charges habituelles avec leur prix. Elles s&apos;ajoutent en un clic aux locataires et aux
+                factures.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ChargeList
+                items={form.chargeCatalog}
+                onChange={(chargeCatalog) => setForm((f) => ({ ...f, chargeCatalog }))}
+                emptyText="Aucune charge dans votre liste."
+              />
+            </CardContent>
+          </Card>
+
+          <div className="sticky bottom-20 z-20 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur md:bottom-4">
+            <Button type="submit" size="lg" className="h-11 w-full">
+              Enregistrer les paramètres
+            </Button>
+          </div>
         </form>
 
         <Card>
@@ -135,5 +197,29 @@ function SettingsForm({ initial }: { initial: Settings }) {
         </Card>
       </div>
     </>
+  );
+}
+
+function SignatureCard() {
+  const data = useAppData();
+  if (!data) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <PenLine className="size-4 text-primary" /> Ma signature
+        </CardTitle>
+        <CardDescription>Elle est ajoutée automatiquement en bas de toutes vos factures et de tous vos reçus.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <SignaturePad
+          value={data.settings.signature}
+          onChange={(signature) => {
+            saveSettings({ ...data.settings, signature });
+            toast.success(signature ? "Signature enregistrée" : "Signature supprimée");
+          }}
+        />
+      </CardContent>
+    </Card>
   );
 }

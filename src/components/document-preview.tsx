@@ -1,6 +1,6 @@
 import type { RentDocument, Settings } from "@/lib/types";
 import { paymentPhrase } from "@/lib/types";
-import { amountInWords, formatAmount, formatDate, formatPeriod, total } from "@/lib/format";
+import { amountInWords, formatAmount, formatDate, formatPeriod, lineDetail, total } from "@/lib/format";
 import { docTitle } from "@/lib/pdf";
 import { cn } from "@/lib/utils";
 
@@ -48,16 +48,32 @@ export function DocumentPreview({
       </div>
 
       <div className="px-5">
-        <div className="flex justify-between rounded-t-md bg-neutral-100 px-3 py-2 text-xs font-semibold">
+        <div className="grid grid-cols-[1fr_auto] gap-3 rounded-t-md bg-neutral-100 px-3 py-2 text-xs font-semibold sm:grid-cols-[1fr_9rem_auto]">
           <span>Désignation</span>
+          <span className="hidden sm:block">Détail</span>
           <span>Montant ({cur})</span>
         </div>
-        {doc.items.map((item) => (
-          <div key={item.id} className="flex justify-between gap-4 border-b px-3 py-2">
-            <span>{item.label || "—"}</span>
-            <span className="tabular-nums">{formatAmount(item.amount, "").trim()}</span>
-          </div>
-        ))}
+        {doc.items.map((item) => {
+          const detail = lineDetail(item);
+          return (
+            <div key={item.id} className="grid grid-cols-[1fr_auto] gap-3 border-b px-3 py-2 sm:grid-cols-[1fr_9rem_auto]">
+              <span>
+                {item.label || "—"}
+                {detail.length > 0 && (
+                  <span className="block text-xs text-neutral-500 sm:hidden">{detail.join(" · ")}</span>
+                )}
+              </span>
+              <span className="hidden text-xs text-neutral-500 sm:block">
+                {detail.map((d) => (
+                  <span key={d} className="block">
+                    {d}
+                  </span>
+                ))}
+              </span>
+              <span className="text-right tabular-nums">{formatAmount(item.amount, "").trim()}</span>
+            </div>
+          );
+        })}
         <div className="mt-3 ml-auto flex max-w-xs justify-between rounded-md bg-emerald-700 px-3 py-2 font-bold text-white">
           <span>{isInvoice ? "TOTAL À PAYER" : "TOTAL REÇU"}</span>
           <span className="tabular-nums">{formatAmount(sum, cur)}</span>
@@ -93,7 +109,13 @@ export function DocumentPreview({
         <div className="text-right text-neutral-700">
           <p>Fait le {formatDate(doc.issueDate)}</p>
           <p>Signature du bailleur</p>
-          <div className="mt-8 h-px w-40 bg-neutral-300" />
+          <div className="flex h-16 w-40 items-end justify-end">
+            {settings.signature && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={settings.signature} alt="Signature" className="max-h-16 max-w-40 object-contain" />
+            )}
+          </div>
+          <div className="h-px w-40 bg-neutral-300" />
         </div>
       </div>
       {settings.footerNote && (

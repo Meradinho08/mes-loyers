@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Zap } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,16 +14,20 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { upsertTenant } from "@/lib/store";
-import type { Tenant } from "@/lib/types";
+import { ChargeList } from "@/components/charge-list";
+import { upsertTenant, useAppData } from "@/lib/store";
+import { formatAmount } from "@/lib/format";
+import type { ChargePreset, Tenant } from "@/lib/types";
 
 type FormState = {
   name: string;
   phone: string;
   property: string;
   rent: string;
-  charges: string;
+  chargeItems: ChargePreset[];
+  meteredElectricity: boolean;
   notes: string;
 };
 
@@ -32,7 +37,8 @@ function toForm(t?: Tenant | null): FormState {
     phone: t?.phone ?? "",
     property: t?.property ?? "",
     rent: t?.rent ? String(t.rent) : "",
-    charges: t?.charges ? String(t.charges) : "",
+    chargeItems: t?.chargeItems ?? [],
+    meteredElectricity: t?.meteredElectricity ?? true,
     notes: t?.notes ?? "",
   };
 }
@@ -76,10 +82,12 @@ function TenantForm({
   onDone: (t: Tenant) => void;
   onCancel: () => void;
 }) {
+  const data = useAppData();
   const [form, setForm] = useState<FormState>(() => toForm(tenant));
   const [error, setError] = useState<string | null>(null);
-  const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-    setForm((f) => ({ ...f, [k]: e.target.value }));
+  const set = (k: "name" | "phone" | "property" | "rent" | "notes") =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const kwhPrice = data?.settings.electricityPrice ?? 0;
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -93,7 +101,8 @@ function TenantForm({
       phone: form.phone.trim(),
       property: form.property.trim(),
       rent: Number(form.rent) || 0,
-      charges: Number(form.charges) || 0,
+      chargeItems: form.chargeItems.filter((c) => c.label.trim() || c.amount),
+      meteredElectricity: form.meteredElectricity,
       notes: form.notes.trim(),
     });
     toast.success(tenant ? "Locataire mis à jour" : "Locataire ajouté");
@@ -128,22 +137,39 @@ function TenantForm({
           <Label htmlFor="t-property">Logement</Label>
           <Input id="t-property" value={form.property} onChange={set("property")} placeholder="Appartement A2, Bè" />
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="t-rent">Loyer mensuel (FCFA)</Label>
           <Input id="t-rent" type="number" inputMode="numeric" min={0} value={form.rent} onChange={set("rent")} placeholder="75000" />
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="t-charges">Charges mensuelles (FCFA)</Label>
-          <Input
-            id="t-charges"
-            type="number"
-            inputMode="numeric"
-            min={0}
-            value={form.charges}
-            onChange={set("charges")}
-            placeholder="0"
+
+        <div className="space-y-2 sm:col-span-2">
+          <Label>Charges mensuelles fixes</Label>
+          <ChargeList
+            items={form.chargeItems}
+            onChange={(chargeItems) => setForm((f) => ({ ...f, chargeItems }))}
+            presets={data?.settings.chargeCatalog}
+            emptyText="Aucune charge fixe. Ajoutez-en depuis la liste ci-dessous."
           />
         </div>
+
+        <label className="flex items-start gap-3 rounded-lg border p-3 sm:col-span-2">
+          <Switch
+            checked={form.meteredElectricity}
+            onCheckedChange={(v) => setForm((f) => ({ ...f, meteredElectricity: v }))}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="flex items-center gap-1.5 text-sm font-medium">
+              <Zap className="size-3.5 text-amber-500" /> Électricité facturée au compteur
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              {kwhPrice
+                ? `Sur chaque facture, saisissez les kWh : le prix est calculé à ${formatAmount(kwhPrice, data?.settings.currency)} le kWh.`
+                : "Définissez le prix du kWh dans les paramètres pour le calcul automatique."}
+            </span>
+          </span>
+        </label>
+
         <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="t-notes">Notes</Label>
           <Textarea id="t-notes" value={form.notes} onChange={set("notes")} placeholder="Caution versée, date d'entrée…" rows={2} />

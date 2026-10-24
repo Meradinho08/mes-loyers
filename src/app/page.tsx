@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { DocStatusBadge, PageHeader, PageLoading } from "@/components/common";
 import { useAppData } from "@/lib/store";
 import { currentPeriod, formatAmount, formatDate, formatPeriod, total } from "@/lib/format";
+import { tenantMonthly } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export default function Dashboard() {
@@ -20,7 +21,7 @@ export default function Dashboard() {
   const collected = receiptsThisMonth.reduce((s, d) => s + total(d.items), 0);
   const unpaid = documents.filter((d) => d.type === "facture" && !d.paid);
   const unpaidTotal = unpaid.reduce((s, d) => s + total(d.items), 0);
-  const expected = tenants.reduce((s, t) => s + t.rent + t.charges, 0);
+  const expected = tenants.reduce((s, t) => s + tenantMonthly(t), 0);
   const recent = documents.slice(0, 6);
   const needsSetup = !settings.ownerName || tenants.length === 0;
 
@@ -109,7 +110,7 @@ export default function Dashboard() {
                       <div className="min-w-0">
                         <p className="truncate font-medium">{t.name}</p>
                         <p className="text-sm text-muted-foreground">
-                          {formatAmount(t.rent + t.charges, cur)}
+                          {formatAmount(tenantMonthly(t), cur)}
                           {t.property ? ` · ${t.property}` : ""}
                         </p>
                       </div>

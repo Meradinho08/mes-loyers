@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import type { AppData, RentDocument, Settings, Tenant, DocType } from "./types";
+import type { AppData, ChargePreset, DocType, LineItem, LineKind, RentDocument, Settings, Tenant } from "./types";
 import { uid } from "./format";
 
 const STORAGE_KEY = "mes-loyers:v1";
@@ -14,7 +14,49 @@ export const DEFAULT_SETTINGS: Settings = {
   currency: "FCFA",
   defaultCountryCode: "228",
   footerNote: "Merci pour votre confiance.",
+  signature: "",
+  electricityPrice: 0,
+  chargeCatalog: [
+    { id: "eau", label: "Eau", amount: 3000 },
+    { id: "gardiennage", label: "Gardiennage", amount: 2000 },
+    { id: "ordures", label: "Ordures ménagères", amount: 1000 },
+  ],
 };
+
+type LegacyTenant = Partial<Tenant> & { charges?: number };
+type LegacyItem = Partial<LineItem> & { id: string; label: string; amount: number };
+
+function migrateTenant(t: LegacyTenant): Tenant {
+  const chargeItems: ChargePreset[] =
+    t.chargeItems ?? (t.charges ? [{ id: uid(), label: "Charges", amount: t.charges }] : []);
+  return {
+    id: t.id ?? uid(),
+    name: t.name ?? "",
+    phone: t.phone ?? "",
+    property: t.property ?? "",
+    rent: t.rent ?? 0,
+    chargeItems,
+    meteredElectricity: t.meteredElectricity ?? false,
+    notes: t.notes ?? "",
+    createdAt: t.createdAt ?? new Date().toISOString(),
+  };
+}
+
+function migrateItem(i: LegacyItem, index: number): LineItem {
+  const kind: LineKind = i.kind ?? (index === 0 && /^loyer/i.test(i.label) ? "loyer" : "charge");
+  return { ...i, kind };
+}
+
+function migrate(parsed: Partial<AppData>): AppData {
+  return {
+    settings: { ...DEFAULT_SETTINGS, ...parsed.settings },
+    tenants: (parsed.tenants ?? []).map((t) => migrateTenant(t as LegacyTenant)),
+    documents: (parsed.documents ?? []).map((d) => ({
+      ...d,
+      items: (d.items ?? []).map((i, idx) => migrateItem(i as LegacyItem, idx)),
+    })),
+  };
+}
 
 const EMPTY: AppData = { settings: DEFAULT_SETTINGS, tenants: [], documents: [] };
 
@@ -26,12 +68,7 @@ function read(): AppData {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as Partial<AppData>;
-      cache = {
-        settings: { ...DEFAULT_SETTINGS, ...parsed.settings },
-        tenants: parsed.tenants ?? [],
-        documents: parsed.documents ?? [],
-      };
+      cache = migrate(JSON.parse(raw) as Partial<AppData>);
       return cache;
     }
   } catch {
@@ -143,9 +180,17 @@ export function importData(json: string) {
   if (!Array.isArray(parsed.tenants) || !Array.isArray(parsed.documents)) {
     throw new Error("Fichier de sauvegarde invalide");
   }
-  write({
-    settings: { ...DEFAULT_SETTINGS, ...parsed.settings },
-    tenants: parsed.tenants,
-    documents: parsed.documents,
-  });
+  write(migrate(parsed));
+}
+
+/** Last electricity meter reading recorded on an invoice for this tenant, to prefill the next one. */
+export function lastMeterIndex(tenantId: string, excludeId?: string): number | null {
+  const docs = read()
+    .documents.filter((d) => d.tenantId === tenantId && d.type === "facture" && d.id !== excludeId)
+    .sort((a, b) => (b.period + b.issueDate).localeCompare(a.period + a.issueDate));
+  for (const d of docs) {
+    const line = d.items.find((i) => i.kind === "electricite" && i.indexEnd != null);
+    if (line?.indexEnd != null) return line.indexEnd;
+  }
+  return null;
 }

@@ -3,31 +3,59 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Eye, FileText, Plus, Receipt, Save, Trash2, UserPlus } from "lucide-react";
+import { Eye, FileText, Home, Receipt, Save, UserPlus, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { ChargeList } from "@/components/charge-list";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DocumentPreview } from "@/components/document-preview";
 import { TenantDialog } from "@/components/tenant-dialog";
 import { WhatsAppIcon } from "@/components/whatsapp-dialog";
-import { nextNumber, upsertDocument } from "@/lib/store";
+import { lastMeterIndex, nextNumber, upsertDocument } from "@/lib/store";
 import { addDays, currentPeriod, formatAmount, formatPeriod, todayISO, total, uid } from "@/lib/format";
-import type { AppData, DocType, LineItem, PaymentMethod, RentDocument, Tenant } from "@/lib/types";
+import type { AppData, ChargePreset, DocType, LineItem, PaymentMethod, RentDocument, Settings, Tenant } from "@/lib/types";
 import { PAYMENT_METHODS } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Draft = Omit<RentDocument, "id" | "createdAt"> & { id?: string };
 
-function itemsForTenant(t: Tenant | undefined, period: string): LineItem[] {
-  const items: LineItem[] = [
-    { id: uid(), label: `Loyer${period ? ` ${formatPeriod(period)}` : ""}`, amount: t?.rent ?? 0 },
-  ];
-  if (t?.charges) items.push({ id: uid(), label: "Charges (eau, électricité, entretien)", amount: t.charges });
+function rentLabel(period: string) {
+  return `Loyer${period ? ` ${formatPeriod(period)}` : ""}`;
+}
+
+function electricityLine(settings: Settings, indexStart: number | null): LineItem {
+  return {
+    id: uid(),
+    kind: "electricite",
+    label: "Électricité",
+    amount: 0,
+    indexStart,
+    indexEnd: null,
+    quantity: 0,
+    unitPrice: settings.electricityPrice,
+  };
+}
+
+function itemsForTenant(t: Tenant | undefined, period: string, settings: Settings): LineItem[] {
+  const items: LineItem[] = [{ id: uid(), kind: "loyer", label: rentLabel(period), amount: t?.rent ?? 0 }];
+  if (t?.meteredElectricity) items.push(electricityLine(settings, lastMeterIndex(t.id)));
+  for (const c of t?.chargeItems ?? []) items.push({ id: uid(), kind: "charge", label: c.label, amount: c.amount });
   return items;
+}
+
+function withElectricity(line: LineItem, patch: Partial<LineItem>): LineItem {
+  const next = { ...line, ...patch };
+  const touchedIndex = "indexStart" in patch || "indexEnd" in patch;
+  if (touchedIndex && next.indexStart != null && next.indexEnd != null && next.indexEnd >= next.indexStart) {
+    next.quantity = Math.round((next.indexEnd - next.indexStart) * 100) / 100;
+  }
+  next.amount = Math.round((next.quantity || 0) * (next.unitPrice || 0));
+  return next;
 }
 
 export function initialDraft(
@@ -50,7 +78,7 @@ export function initialDraft(
     issueDate: today,
     period,
     dueDate: type === "facture" ? addDays(today, 5) : "",
-    items: invoice ? invoice.items.map((i) => ({ ...i, id: uid() })) : itemsForTenant(tenant, period),
+    items: invoice ? invoice.items.map((i) => ({ ...i, id: uid() })) : itemsForTenant(tenant, period, data.settings),
     paymentMethod: "especes",
     paid: type === "recu",
     notes: invoice ? `Paiement de la facture ${invoice.number}` : "",
@@ -87,7 +115,7 @@ export function DocumentEditor({ data, initial }: { data: AppData; initial: Draf
       tenantName: t.name,
       tenantPhone: t.phone,
       property: t.property,
-      items: itemsForTenant(t, d.period),
+      items: itemsForTenant(t, d.period, data.settings),
     }));
     setErrors((e) => ({ ...e, tenant: "" }));
   }
@@ -97,17 +125,25 @@ export function DocumentEditor({ data, initial }: { data: AppData; initial: Draf
       ...d,
       period,
       items: d.items.map((i) =>
-        i.label.startsWith("Loyer") ? { ...i, label: `Loyer${period ? ` ${formatPeriod(period)}` : ""}` } : i,
+        i.kind === "loyer" && i.label.startsWith("Loyer") ? { ...i, label: rentLabel(period) } : i,
       ),
     }));
   }
 
-  function updateItem(id: string, patch: Partial<LineItem>) {
-    set(
-      "items",
-      draft.items.map((i) => (i.id === id ? { ...i, ...patch } : i)),
+  const rent = draft.items.find((i) => i.kind === "loyer");
+  const electricity = draft.items.find((i) => i.kind === "electricite");
+  const charges = draft.items.filter((i) => i.kind === "charge");
+  const setLines = (r: LineItem | undefined, e: LineItem | undefined, c: LineItem[]) =>
+    set("items", [r, e, ...c].filter(Boolean) as LineItem[]);
+  const setCharges = (list: ChargePreset[]) =>
+    setLines(
+      rent,
+      electricity,
+      list.map((c) => ({ id: c.id, kind: "charge" as const, label: c.label, amount: c.amount })),
     );
-  }
+  const updateElectricity = (patch: Partial<LineItem>) =>
+    electricity && setLines(rent, withElectricity(electricity, patch), charges);
+  const numOrNull = (v: string) => (v === "" ? null : Number(v));
 
   function validate() {
     const e: Record<string, string> = {};
@@ -125,7 +161,7 @@ export function DocumentEditor({ data, initial }: { data: AppData; initial: Draf
     }
     const saved = upsertDocument({
       ...draft,
-      items: draft.items.filter((i) => i.label.trim() || i.amount),
+      items: draft.items.filter((i) => i.kind !== "charge" || i.label.trim() || i.amount),
     });
     toast.success(
       `${saved.type === "facture" ? "Facture" : "Reçu"} ${saved.number} ${isEdit ? "mis à jour" : "enregistré"}`,
@@ -276,48 +312,161 @@ export function DocumentEditor({ data, initial }: { data: AppData; initial: Draf
 
         <Card>
           <CardHeader>
-            <CardTitle>Montants</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Home className="size-4 text-primary" /> Loyer
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {draft.items.map((item) => (
-              <div key={item.id} className="flex items-start gap-2">
+          <CardContent>
+            {rent ? (
+              <div className="flex gap-2">
                 <Input
-                  value={item.label}
-                  onChange={(e) => updateItem(item.id, { label: e.target.value })}
-                  placeholder="Désignation (loyer, eau, réparation…)"
+                  value={rent.label}
+                  onChange={(e) => setLines({ ...rent, label: e.target.value }, electricity, charges)}
                   className="h-10 flex-1"
-                  aria-label="Désignation"
+                  aria-label="Libellé du loyer"
                 />
                 <Input
                   type="number"
                   inputMode="numeric"
                   min={0}
-                  value={item.amount || ""}
-                  onChange={(e) => updateItem(item.id, { amount: Number(e.target.value) || 0 })}
+                  value={rent.amount || ""}
+                  onChange={(e) => setLines({ ...rent, amount: Number(e.target.value) || 0 }, electricity, charges)}
                   placeholder="0"
                   className="h-10 w-28 text-right tabular-nums sm:w-36"
-                  aria-label="Montant"
+                  aria-label="Montant du loyer"
                 />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-10 text-muted-foreground"
-                  onClick={() => set("items", draft.items.filter((i) => i.id !== item.id))}
-                  aria-label="Supprimer la ligne"
-                  disabled={draft.items.length === 1}
-                >
-                  <Trash2 />
-                </Button>
               </div>
-            ))}
-            {errors.items && <p className="text-xs text-destructive">{errors.items}</p>}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+            ) : (
               <Button
                 variant="outline"
-                onClick={() => set("items", [...draft.items, { id: uid(), label: "", amount: 0 }])}
+                onClick={() =>
+                  setLines({ id: uid(), kind: "loyer", label: rentLabel(draft.period), amount: 0 }, electricity, charges)
+                }
               >
-                <Plus /> Ajouter une ligne
+                Ajouter le loyer
               </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-3">
+            <CardTitle className="flex items-center gap-2">
+              <Zap className="size-4 text-amber-500" /> Électricité
+            </CardTitle>
+            <Switch
+              checked={!!electricity}
+              onCheckedChange={(on) =>
+                setLines(
+                  rent,
+                  on ? electricityLine(data.settings, draft.tenantId ? lastMeterIndex(draft.tenantId, draft.id) : null) : undefined,
+                  charges,
+                )
+              }
+              aria-label="Facturer l'électricité"
+            />
+          </CardHeader>
+          {electricity ? (
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="e-start">Ancien index</Label>
+                  <Input
+                    id="e-start"
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    value={electricity.indexStart ?? ""}
+                    onChange={(e) => updateElectricity({ indexStart: numOrNull(e.target.value) })}
+                    placeholder="—"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="e-end">Nouvel index</Label>
+                  <Input
+                    id="e-end"
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    value={electricity.indexEnd ?? ""}
+                    onChange={(e) => updateElectricity({ indexEnd: numOrNull(e.target.value) })}
+                    placeholder="—"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="e-kwh">kWh consommés</Label>
+                  <Input
+                    id="e-kwh"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="any"
+                    value={electricity.quantity || ""}
+                    onChange={(e) => updateElectricity({ quantity: Number(e.target.value) || 0 })}
+                    placeholder="0"
+                    className="font-medium"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="e-price">Prix du kWh</Label>
+                  <Input
+                    id="e-price"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="any"
+                    value={electricity.unitPrice || ""}
+                    onChange={(e) => updateElectricity({ unitPrice: Number(e.target.value) || 0 })}
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+              {electricity.indexStart != null &&
+                electricity.indexEnd != null &&
+                electricity.indexEnd < electricity.indexStart && (
+                  <p className="text-xs text-destructive">Le nouvel index doit être supérieur à l&apos;ancien.</p>
+                )}
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm">
+                <span className="text-amber-900">
+                  {electricity.quantity || 0} kWh × {formatAmount(electricity.unitPrice || 0, cur)}
+                </span>
+                <span className="font-semibold tabular-nums text-amber-900">{formatAmount(electricity.amount, cur)}</span>
+              </div>
+              {!data.settings.electricityPrice && (
+                <p className="text-xs text-muted-foreground">
+                  Astuce : enregistrez votre prix du kWh dans{" "}
+                  <Link href="/parametres" className="text-primary underline">
+                    les paramètres
+                  </Link>{" "}
+                  pour qu&apos;il soit rempli automatiquement.
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Remplissez les deux index pour calculer la consommation, ou saisissez directement les kWh.
+              </p>
+            </CardContent>
+          ) : (
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Activez pour facturer l&apos;électricité au kWh.</p>
+            </CardContent>
+          )}
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Receipt className="size-4 text-primary" /> Charges
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <ChargeList
+              items={charges.map((c) => ({ id: c.id, label: c.label, amount: c.amount }))}
+              onChange={setCharges}
+              presets={data.settings.chargeCatalog}
+              emptyText="Aucune charge sur ce document."
+            />
+            {errors.items && <p className="text-xs text-destructive">{errors.items}</p>}
+            <div className="flex items-center justify-end border-t pt-3">
               <p className="text-right">
                 <span className="mr-2 text-sm text-muted-foreground">Total</span>
                 <span className="text-xl font-semibold tabular-nums">{formatAmount(total(draft.items), cur)}</span>
